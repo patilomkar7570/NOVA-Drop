@@ -16,6 +16,8 @@ android/build/
 .nova-drop-temp/
 *.tmp
 *.log
+*.zip
+*.apk
 
 # Environment & OS files
 .env
