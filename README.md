@@ -1,152 +1,129 @@
-# NOVA Drop — Phase 1: PC Web Edition
+# NOVA Drop
 
-> **Your files. Your devices. Your network.**
+<p align="center">
+  <img src="client/public/logo.png" width="96" height="96" alt="NOVA Drop Logo" />
+</p>
 
-NOVA Drop is a privacy-first, high-speed local file-transfer application. Its purpose is to transfer files between devices as quickly and reliably as possible, without cloud storage, third-party servers, compression, or modification of the original files.
+<p align="center">
+  <strong>Your files. Your devices. Your network.</strong><br />
+  High-speed, privacy-first local file transfer application across Windows, iOS, and Android.
+</p>
 
-This is a standalone product within the NOVA software family and does not depend on NOVA AI or any other NOVA application.
-
----
-
-## Core Principles
-
-- **Privacy First**: Files never touch external cloud storage or third-party servers. Works completely offline once installed.
-- **Zero Compression**: 100% byte-for-byte fidelity. Images are never recompressed, videos are never transcoded, and documents are never modified.
-- **Maximum Speed**: Built on native Node.js streaming APIs with backpressure handling for line-rate local transfers.
-- **Cryptographic Verification**: Every file transfer is verified via streaming SHA-256 checksums before being marked complete.
-- **Local-First Architecture**: Bound to `127.0.0.1` by default for secure isolation on Windows.
-- **No User Accounts**: No registration, passwords, telemetry, or tracking.
-
----
-
-## Technology Stack
-
-- **Backend**: Node.js, TypeScript, Express, native streaming APIs (`stream/promises`), WebSockets (`ws`), native `crypto` module.
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide icons.
-- **Testing**: Vitest, Supertest.
+<p align="center">
+  <a href="https://github.com/patilomkar7570/NOVA-Drop/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-v1.0.0-7C3AED.svg" alt="Release v1.0.0" /></a>
+  <a href="https://github.com/patilomkar7570/NOVA-Drop"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20iOS%20%7C%20Android%20%7C%20Web-blue.svg" alt="Platforms" /></a>
+  <img src="https://img.shields.io/badge/Cloud%20Storage-0%25%20(None)-10B981.svg" alt="Zero Cloud" />
+  <img src="https://img.shields.io/badge/Compression-0%25%20(Byte--for--Byte)-10B981.svg" alt="Zero Compression" />
+  <img src="https://img.shields.io/badge/License-MIT-gray.svg" alt="License" />
+</p>
 
 ---
 
-## Quick Start on Windows
+## Overview
 
-### Option 1: One-Click Launch (Recommended)
-Double-click `run.bat` in the project root folder. It will:
-1. Verify Node.js installation.
-2. Install dependencies automatically if needed.
-3. Build the frontend and backend if not yet built.
-4. Launch the local server on `http://127.0.0.1:3000`.
-5. Open your default web browser (Edge or Chrome) automatically.
+**NOVA Drop** is an ultra-fast, local-first file transfer application built for instant file sharing between your PC, phone, and tablet over your local network. It operates without cloud storage, third-party relays, user accounts, or compression.
 
-### Option 2: Command Line (PowerShell / Command Prompt)
+Whether transferring high-resolution photos, 4K videos, zip archives, or documents, NOVA Drop transfers original bytes with cryptographic verification and line-rate speed.
+
+---
+
+## Key Features
+
+- **Privacy First**: Files stream directly through your local network. Zero external cloud storage, zero tracking, and zero telemetry.
+- **Zero Compression**: 100% byte-for-byte fidelity. Media is never transcoded or downscaled. Original filenames, extensions, and metadata are preserved.
+- **Line-Rate Local Speed**: Built on native Node.js streaming APIs with backpressure handling for smooth gigabyte-scale transfers.
+- **Multi-Platform Support**:
+  - **PC (Windows)**: Silent one-click launcher (`NOVA-Drop.vbs`) and portable bundle.
+  - **iOS (iPhone / iPad)**: Safari PWA with "Add to Home Screen" standalone support.
+  - **Android**: Native APK with background transfer and native `DownloadManager` integration.
+- **Frictionless Pairing**: Simple 6-digit numeric pairing codes (`XXX-XXX`) and direct session links.
+- **Brute-Force Shield**: In-memory rate limiting locks out unauthorized code guessing attempts automatically.
+- **Adaptive Appearance**: Auto (System default) theme with beautifully calibrated Light and Dark themes.
+
+---
+
+## Downloads & Quick Start
+
+### 1. Windows PC
+Download the portable package or clone the repository:
+- **Portable Package**: [Download `NOVA-Drop-v1.0.0-Windows-Portable.zip`](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop-v1.0.0-Windows-Portable.zip)
+- **Silent One-Click Launch**: Double-click `NOVA-Drop.vbs` (runs quietly in background without console window and opens browser).
+- **Command Prompt**: Run `NOVA-Drop.bat` or `run.bat`.
+
+### 2. Android Phone
+- **Android APK**: [Download `NOVA-Drop.apk`](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop.apk)
+- Install the APK on your Android device to transfer files directly with your PC over Wi-Fi.
+
+### 3. iPhone & iPad (Safari PWA)
+1. Ensure your iPhone/iPad is on the same Wi-Fi network as your PC.
+2. Open Safari and navigate to your PC's local network address (displayed on the Overview screen, e.g. `http://192.168.x.x:3000`).
+3. Tap the **Share** button in Safari and select **Add to Home Screen**.
+4. Launch NOVA Drop in full-screen standalone mode.
+
+---
+
+## How It Works
+
+```
+[ Sender Device ]                      [ Receiver Device ]
+       │                                       │
+       │  1. Create Transfer Session           │
+       │  (Generates 6-Digit Code)             │
+       │                                       │
+       │  2. Share Code (e.g. 482-915)         │
+       ├──────────────────────────────────────►│
+       │                                       │  3. Enter Pairing Code
+       │                                       │  4. Review File Manifest
+       │                                       │  5. Click Accept
+       │                                       │
+       │◄──────────────────────────────────────┤
+       │  6. Real-Time Line-Rate Stream        │
+       │══════════════════════════════════════►│  7. Browser / Native Download
+       │                                       │
+       │  8. Automated Session Reset           │  9. Files Saved
+```
+
+---
+
+## Developer Setup
+
+### Prerequisites
+- Node.js (v18, v20, or v22+)
+- npm (v9+)
+
+### Installation & Build
 
 ```powershell
-# 1. Install dependencies
-npm.cmd install
+# Clone the repository
+git clone https://github.com/patilomkar7570/NOVA-Drop.git
+cd NOVA-Drop
 
-# 2. Build client and server
-npm.cmd run build
+# Install dependencies for client and server
+npm install
 
-# 3. Start the application
-npm.cmd start
+# Build client and server bundles
+npm run build
+
+# Start the application
+npm start
 ```
 
-Then navigate to:
-```
-http://127.0.0.1:3000
-```
-
----
-
-## Testing Local Transfers (Two Browser Windows)
-
-Because Phase 1 is the PC Web Edition bound to `127.0.0.1`, you can test transfers between two browser windows or tabs on the same PC:
-
-1. **Window 1 (Sender)**:
-   - Open `http://127.0.0.1:3000`.
-   - Go to the **Send** tab.
-   - Drag & drop or browse to select files of any format.
-   - Click **Create Transfer Session**.
-   - Note the 6-digit pairing code (e.g., `482-915`) or click **Copy Link**.
-
-2. **Window 2 (Receiver)**:
-   - Open a second browser window (e.g. Incognito or Microsoft Edge) to `http://127.0.0.1:3000`.
-   - Go to the **Receive** tab (or paste the copied link).
-   - Enter the pairing code and click **Connect to Sender**.
-
-3. **Transfer & Verification**:
-   - The receiver sees the incoming file manifest (filename, size, type).
-   - The receiver clicks **Accept & Stream Files**.
-   - Files stream directly through the local transfer engine.
-   - The browser downloads the files to the user's computer.
-   - Both sender and receiver see **100% Verified** with identical SHA-256 checksums!
-
----
-
-## Running the Automated Test Suite
-
-NOVA Drop includes a comprehensive test suite covering single-file transfers, multi-file transfers, empty files, large files, special/unicode filenames, brute-force rate limiting, and SHA-256 verification:
+### Running Automated Tests
 
 ```powershell
-npm.cmd test
+npm test
 ```
 
 ---
 
 ## Documentation
 
-Detailed technical documentation is available in the `docs/` folder:
 - [Architecture & API Specification](docs/ARCHITECTURE.md)
-- [Security & Privacy Documentation](docs/SECURITY_PRIVACY.md)
-- [Phase 1 Features & Known Limitations](docs/FEATURES_LIMITATIONS.md)
-
----
-
-## Project Structure
-
-```
-Nova Drop/
-├── client/                     # React + TypeScript + Vite frontend
-│   ├── src/
-│   │   ├── components/         # Sidebar, Header, etc.
-│   │   ├── context/            # ThemeContext, TransferContext
-│   │   ├── pages/              # Overview, Send, Receive, Transfers, History, Settings
-│   │   ├── services/           # api.ts, websocket.ts
-│   │   ├── types/              # Client type definitions
-│   │   ├── utils/              # formatters.ts, hash helpers
-│   │   ├── App.tsx             # Root application component
-│   │   ├── main.tsx            # Entry point
-│   │   └── index.css           # Tailwind & theme styles
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   └── tailwind.config.js
-├── server/                     # Node.js + TypeScript backend
-│   ├── src/
-│   │   ├── config.ts           # Server configuration & defaults
-│   │   ├── crypto/             # SHA-256 streaming hasher & secure tokens
-│   │   ├── engine/             # StreamEngine (streaming, backpressure)
-│   │   ├── history/            # HistoryManager (metadata-only audit trail)
-│   │   ├── realtime/           # WebSocketHandler (real-time signaling)
-│   │   ├── routes/             # Versioned REST API v1 routes
-│   │   ├── session/            # SessionManager & RateLimiter
-│   │   ├── storage/            # StorageManager (isolated temporary storage)
-│   │   └── server.ts           # Express server bootstrap & static asset serving
-│   ├── tests/                  # Vitest backend integration test suite
-│   ├── package.json
-│   └── tsconfig.json
-├── docs/                       # Technical architecture & security specifications
-│   ├── ARCHITECTURE.md
-│   ├── SECURITY_PRIVACY.md
-│   └── FEATURES_LIMITATIONS.md
-├── run.bat                     # Windows one-click batch launcher
-├── run.ps1                     # Windows PowerShell launcher
-├── package.json                # Root orchestration package
-└── README.md                   # Product documentation
-```
+- [Security & Privacy Model](docs/SECURITY_PRIVACY.md)
+- [Features & Platform Roadmap](docs/FEATURES_LIMITATIONS.md)
 
 ---
 
 ## License
 
-MIT © NOVA Software Family.
+MIT © [NOVA Software](https://github.com/patilomkar7570/NOVA-Drop).

@@ -86,20 +86,24 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
         <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] flex flex-col justify-between shadow-sm">
           <div>
             <div className="flex items-center justify-between text-[var(--text-muted)] mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider">Local Engine</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Local & Wi-Fi Engine</span>
               <Server className="w-4 h-4 text-[#8B5CF6]" />
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse"></div>
-              <span className="text-lg font-bold text-[var(--text-primary)]">Online & Protected</span>
+              <span className="text-lg font-bold text-[var(--text-primary)]">Ready for Transfers</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed">
-              Bound to loopback adapter only. External internet access is blocked by design.
+              Active on your local network. Connect phones, tablets, or other PCs on the same Wi-Fi with zero configuration.
             </p>
           </div>
           <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <span>Port: {systemStatus?.port || 3000}</span>
-            <span>Uptime: {systemStatus ? `${Math.floor(systemStatus.uptimeSeconds / 60)} mins` : '--'}</span>
+            <span className="font-mono text-[var(--text-primary)] font-medium">
+              {systemStatus?.localWifiUrl || `http://localhost:${systemStatus?.port || 3000}`}
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded bg-[#10B981]/15 text-[#10B981] font-semibold">
+              Wi-Fi Active
+            </span>
           </div>
         </div>
 
