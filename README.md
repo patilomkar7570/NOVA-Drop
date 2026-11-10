@@ -21,66 +21,85 @@
 
 ## Overview
 
-**NOVA Drop** is an ultra-fast, local-first file transfer application built for instant file sharing between your PC, phone, and tablet over your local network. It operates without cloud storage, third-party relays, user accounts, or compression.
+**NOVA Drop** is an ultra-fast, local-first file transfer application built for instant file sharing between your PC, phone, and tablet over your local Wi-Fi network. It operates without cloud storage, third-party relays, user accounts, or file compression.
 
-Whether transferring high-resolution photos, 4K videos, zip archives, or documents, NOVA Drop transfers original bytes with cryptographic verification and line-rate speed.
+Whether transferring original 4K video clips, high-resolution RAW photos, large archives, or documents, NOVA Drop transfers original bytes with cryptographic SHA-256 verification and line-rate local Wi-Fi speed.
 
 ---
 
 ## Key Features
 
 - **Privacy First**: Files stream directly through your local network. Zero external cloud storage, zero tracking, and zero telemetry.
-- **Zero Compression**: 100% byte-for-byte fidelity. Media is never transcoded or downscaled. Original filenames, extensions, and metadata are preserved.
-- **Line-Rate Local Speed**: Built on native Node.js streaming APIs with backpressure handling for smooth gigabyte-scale transfers.
+- **Zero Compression**: 100% byte-for-byte fidelity. Media is never transcoded, recompressed, or downscaled. Original filenames, extensions, and metadata are preserved.
+- **Line-Rate Local Speed**: Built on native streaming pipelines with backpressure handling for smooth gigabyte-scale transfers.
 - **Multi-Platform Support**:
-  - **PC (Windows)**: Silent one-click launcher (`NOVA-Drop.vbs`) and portable bundle.
-  - **iOS (iPhone / iPad)**: Safari PWA with "Add to Home Screen" standalone support.
-  - **Android**: Native APK with background transfer and native `DownloadManager` integration.
+  - **Windows (Portable EXE)**: Standalone single-file executable (`NOVA-Drop-Portable.exe`). Double-click to run immediately with zero installation.
+  - **Windows (Setup Installer)**: Full Windows Installer (`NOVA-Drop-Setup.exe`) with desktop/Start Menu shortcuts and a dedicated one-click launch button upon completion.
+  - **Android (Native APK)**: Native application (`NOVA-Drop.apk`) with background transfers and system `DownloadManager` integration.
+  - **iOS (iPhone & iPad)**: High-performance Safari Web Edition with "Add to Home Screen" standalone PWA support.
+- **Instant Wi-Fi URL Sharing**: Whenever the application is run, it displays and automatically copies the direct local Wi-Fi address so you can paste it into any phone or device to begin copying data immediately.
 - **Frictionless Pairing**: Simple 6-digit numeric pairing codes (`XXX-XXX`) and direct session links.
 - **Brute-Force Shield**: In-memory rate limiting locks out unauthorized code guessing attempts automatically.
-- **Adaptive Appearance**: Auto (System default) theme with beautifully calibrated Light and Dark themes.
+- **Adaptive Appearance**: Auto (System default) theme with high-contrast, calibrated Dark and Light themes.
 
 ---
 
-## Downloads & Quick Start
+## Downloads (Release v1.0.0)
 
-### 1. Windows PC
-Download the portable package or clone the repository:
-- **Portable Package**: [Download `NOVA-Drop-v1.0.0-Windows-Portable.zip`](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop-v1.0.0-Windows-Portable.zip)
-- **Silent One-Click Launch**: Double-click `NOVA-Drop.vbs` (runs quietly in background without console window and opens browser).
-- **Command Prompt**: Run `NOVA-Drop.bat` or `run.bat`.
-
-### 2. Android Phone
-- **Android APK**: [Download `NOVA-Drop.apk`](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop.apk)
-- Install the APK on your Android device to transfer files directly with your PC over Wi-Fi.
-
-### 3. iPhone & iPad (Safari PWA)
-1. Ensure your iPhone/iPad is on the same Wi-Fi network as your PC.
-2. Open Safari and navigate to your PC's local network address (displayed on the Overview screen, e.g. `http://192.168.x.x:3000`).
-3. Tap the **Share** button in Safari and select **Add to Home Screen**.
-4. Launch NOVA Drop in full-screen standalone mode.
+| Package | Format | Description |
+| :--- | :---: | :--- |
+| **[NOVA-Drop-Portable.exe](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop-Portable.exe)** | `.exe` (Standalone) | **No installation required.** Double-click to start immediately. Includes self-contained engine, displays your Wi-Fi URL, copies it to clipboard, and opens your browser. |
+| **[NOVA-Drop-Setup.exe](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop-Setup.exe)** | `.exe` (Installer) | **Windows Setup Installer.** Installs NOVA Drop on your PC, creates Start Menu & Desktop shortcuts, and provides a dedicated **"Launch NOVA Drop"** button on completion. |
+| **[NOVA-Drop.apk](https://github.com/patilomkar7570/NOVA-Drop/releases/download/v1.0.0/NOVA-Drop.apk)** | `.apk` (Android) | **Android Mobile App.** Connects over local Wi-Fi, receives original files to your phone's Downloads folder, and uploads files back to your PC. |
 
 ---
 
-## How It Works
+## How to Transfer Files: Instant Wi-Fi URL Workflow
+
+Whenever you run **NOVA-Drop-Portable.exe**, **NOVA-Drop-Setup.exe**, or the **NOVA Drop APK**, NOVA Drop gives you a direct Wi-Fi URL that connects all devices on the same network instantly:
+
+### Step 1: Start NOVA Drop on Your PC
+- Run **`NOVA-Drop-Portable.exe`** or launch from the installer.
+- NOVA Drop displays:
+  - **Local PC Access:** `http://localhost:3000`
+  - **Mobile / Wi-Fi Access:** `http://<YOUR_PC_IP>:3000` (e.g. `http://192.168.31.75:3000`)
+- The Mobile Wi-Fi URL is **automatically copied to your clipboard**!
+- NOVA Drop opens automatically in your default browser.
+
+### Step 2: Open on Your Phone or Tablet
+- Ensure your phone is connected to the same Wi-Fi network.
+- **Option A (Android App):** Open `NOVA-Drop.apk` on your phone and tap **Connect**.
+- **Option B (iPhone / iPad / Android Browser):** Open Safari or Chrome and paste the URL (e.g. `http://192.168.31.75:3000`).
+
+### Step 3: Transfer at Maximum Speed
+- **To Send:** Drag & drop files on your PC or tap Browse on your phone. Click **Create Transfer Session**.
+- **To Receive:** Enter the 6-digit code or tap the direct link. Click **Accept & Receive Files**.
+- Files stream byte-for-byte directly over your local Wi-Fi network with cryptographic SHA-256 integrity verification.
+
+---
+
+## Transfer Architecture
 
 ```
-[ Sender Device ]                      [ Receiver Device ]
-       │                                       │
-       │  1. Create Transfer Session           │
-       │  (Generates 6-Digit Code)             │
-       │                                       │
-       │  2. Share Code (e.g. 482-915)         │
-       ├──────────────────────────────────────►│
-       │                                       │  3. Enter Pairing Code
-       │                                       │  4. Review File Manifest
-       │                                       │  5. Click Accept
-       │                                       │
-       │◄──────────────────────────────────────┤
-       │  6. Real-Time Line-Rate Stream        │
-       │══════════════════════════════════════►│  7. Browser / Native Download
-       │                                       │
-       │  8. Automated Session Reset           │  9. Files Saved
+[ Sender Device (PC / Phone) ]         [ Receiver Device (PC / Phone) ]
+              │                                       │
+              │  1. Create Transfer Session           │
+              │  (Generates 6-Digit Code)             │
+              │                                       │
+              │  2. Share Wi-Fi URL or Code           │
+              ├──────────────────────────────────────►│
+              │                                       │  3. Connect via URL or Code
+              │                                       │  4. Review File Manifest
+              │                                       │  5. Click Accept & Receive
+              │                                       │
+              │◄──────────────────────────────────────┤
+              │  6. Streaming Direct Wi-Fi Pipe       │
+              │══════════════════════════════════════►│  7. Line-Rate Download
+              │                                       │     (Progress Tracked)
+              │                                       │
+              │  8. Cryptographic SHA-256 Verified   │  9. Files Saved
+              │◄──────────────────────────────────────┤
+              │  10. Session Auto-Cleaned & Purged    │
 ```
 
 ---
@@ -98,7 +117,7 @@ Download the portable package or clone the repository:
 git clone https://github.com/patilomkar7570/NOVA-Drop.git
 cd NOVA-Drop
 
-# Install dependencies for client and server
+# Install dependencies
 npm install
 
 # Build client and server bundles
@@ -113,6 +132,8 @@ npm start
 ```powershell
 npm test
 ```
+
+All 18 comprehensive engine and streaming security tests run via Vitest.
 
 ---
 

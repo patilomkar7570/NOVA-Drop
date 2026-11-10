@@ -32,6 +32,9 @@ yarn-error.log*
 pnpm-debug.log*
 *.zip
 *.apk
+*.exe
+payload.zip
+runtime/
 
 # Environment & Credentials
 .env

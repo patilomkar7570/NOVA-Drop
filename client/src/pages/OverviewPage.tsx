@@ -10,6 +10,9 @@ import {
   Trash2,
   Lock,
   EyeOff,
+  Smartphone,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { NavPage } from '../types/index.js';
 import { useTransfers } from '../context/TransferContext.js';
@@ -24,6 +27,15 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
   const { systemStatus, history, refreshSystemStatus } = useTransfers();
   const [clearingStorage, setClearingStorage] = useState(false);
   const [clearMessage, setClearMessage] = useState<string | null>(null);
+  const [copiedWifi, setCopiedWifi] = useState(false);
+
+  const wifiUrl = systemStatus?.localWifiUrl || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3000` : 'http://localhost:3000');
+
+  const copyWifiUrl = () => {
+    navigator.clipboard.writeText(wifiUrl);
+    setCopiedWifi(true);
+    setTimeout(() => setCopiedWifi(false), 2000);
+  };
 
   const handleClearTemp = async () => {
     try {
@@ -77,6 +89,42 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
               <span>Receive Files</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Mobile & Wi-Fi Fast Connect Bar */}
+      <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[#7C3AED]/30 shadow-md shadow-[#7C3AED]/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center space-x-3.5">
+          <div className="w-12 h-12 rounded-xl bg-[#7C3AED]/15 border border-[#7C3AED]/30 flex items-center justify-center shrink-0 text-[#8B5CF6]">
+            <Smartphone className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#8B5CF6]">
+                Connect Phones & Tablets
+              </span>
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+            </div>
+            <p className="text-sm font-semibold text-[var(--text-primary)] mt-0.5">
+              Open on any phone (iOS / Android) on your local Wi-Fi:
+            </p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Paste into Safari/Chrome or the NOVA Drop Android APK to transfer files directly.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2 bg-[var(--bg-card-subtle)] p-2 rounded-xl border border-[var(--border-subtle)]">
+          <code className="text-xs font-mono font-bold text-[#8B5CF6] px-2 truncate max-w-[240px]">
+            {wifiUrl}
+          </code>
+          <button
+            onClick={copyWifiUrl}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors shadow-sm shrink-0"
+          >
+            {copiedWifi ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedWifi ? 'Copied' : 'Copy URL'}</span>
+          </button>
         </div>
       </div>
 

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>NOVA Drop — Connect</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: #0B0D13;
+      color: #F3F4F6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+      text-align: center;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.25);
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    h1 span {
+      color: #8B5CF6;
+    }
+    p.tagline {
+      font-size: 13px;
+      color: #9CA3AF;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: #12151E;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #9CA3AF;
+      text-align: left;
+      margin-bottom: 8px;
+    }
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    input {
+      flex: 1;
+      background: #181C28;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      border-color: #7C3AED;
+    }
+    button.btn-primary {
+      width: 100%;
+      background: #7C3AED;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+      transition: transform 0.1s, background-color 0.2s;
+    }
+    button.btn-primary:active {
+      transform: scale(0.98);
+      background: #6D28D9;
+    }
+    .instructions {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #6B7280;
+      line-height: 1.5;
+      text-align: left;
+    }
+    .instructions ol {
+      padding-left: 20px;
+      margin-top: 6px;
+    }
+    .instructions li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <img src="logo.png" alt="NOVA Drop" class="logo">
+  <h1>NOVA <span>Drop</span></h1>
+  <p class="tagline">Your files. Your devices. Your network.</p>
+
+  <div class="card">
+    <label for="serverUrl">Enter PC Wi-Fi URL</label>
+    <div class="input-group">
+      <input type="url" id="serverUrl" placeholder="http://192.168.1.100:3000" />
+    </div>
+    <button class="btn-primary" onclick="connectToServer()">Connect to PC</button>
+
+    <div class="instructions">
+      <strong>How to get the URL:</strong>
+      <ol>
+        <li>Start NOVA Drop on your PC (Portable or Installed).</li>
+        <li>Connect this phone to the same Wi-Fi.</li>
+        <li>Copy or type the URL shown on your PC screen above.</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const saved = localStorage.getItem('nova_server_url');
+    const input = document.getElementById('serverUrl');
+    if (saved) {
+      input.value = saved;
+    } else {
+      input.value = 'http://192.168.31.75:3000';
+    }
+
+    function connectToServer() {
+      let url = input.value.trim();
+      if (!url) return;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      localStorage.setItem('nova_server_url', url);
+      window.location.href = url;
+    }
+  </script>
+</body>
+</html>
