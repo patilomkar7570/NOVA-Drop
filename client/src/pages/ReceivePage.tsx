@@ -21,6 +21,18 @@ import { formatBytes, formatPairingCode, getFileCategory } from '../utils/format
 import * as api from '../services/api.js';
 import { wsClient } from '../services/websocket.js';
 
+interface IncomingItem {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  sha256?: string;
+  status: string;
+  downloaded: boolean;
+  progressPercent?: number;
+  downloadUrl?: string;
+}
+
 export const ReceivePage: React.FC = () => {
   const {
     activeSession,
@@ -34,21 +46,10 @@ export const ReceivePage: React.FC = () => {
   const [isJoining, setIsJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  const [incomingFiles, setIncomingFiles] = useState<
-    Array<{
-      id: string;
-      name: string;
-      size: number;
-      type: string;
-      sha256?: string;
-      status: string;
-      downloaded: boolean;
-      downloadUrl?: string;
-    }>
-  >([]);
-
+  const [incomingFiles, setIncomingFiles] = useState<IncomingItem[]>([]);
   const [isAccepted, setIsAccepted] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [transferSuccess, setTransferSuccess] = useState(false);
 
   const isReceiverSession = activeSession && activeSessionRole === 'receiver';
 
@@ -147,6 +148,7 @@ export const ReceivePage: React.FC = () => {
               status: data.verified ? 'verified' : 'failed',
               sha256: data.sha256,
               downloaded: true,
+              progressPercent: 100,
             };
           }
           return f;
@@ -169,11 +171,13 @@ export const ReceivePage: React.FC = () => {
     };
   }, [isReceiverSession, activeSession]);
 
+  // When Accept is clicked, automatically download all incoming files sequentially
   const handleAcceptTransfer = async () => {
     if (!activeSession) return;
     try {
-      await api.acceptTransfer(activeSession.id);
       setIsAccepted(true);
+      await api.acceptTransfer(activeSession.id);
+      await startDownloadAll();
     } catch (err) {
       console.error('Failed to accept:', err);
     }
@@ -191,67 +195,57 @@ export const ReceivePage: React.FC = () => {
     }
   };
 
-  // Download a single file and then cancel/clean up immediately as requested
-  const handleDownloadFile = async (fileId: string) => {
-    if (!activeSession) return;
-    const file = incomingFiles.find((f) => f.id === fileId);
-    if (!file) return;
-
-    try {
-      const url = api.getDownloadUrl(activeSession.id, fileId);
-
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', file.name);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      await api.verifyTransfer(activeSession.id, fileId, file.sha256);
-      await refreshHistory();
-
-      // Check if all files in manifest are received
-      const remaining = incomingFiles.filter(f => f.id !== fileId && !f.downloaded);
-      if (remaining.length === 0) {
-        // Once receiver gets the file, cancel and reset everything
-        setTimeout(async () => {
-          try {
-            await api.cancelSession(activeSession.id);
-          } catch {}
-          clearSession();
-          setIncomingFiles([]);
-          setIsAccepted(false);
-        }, 1500);
-      } else {
-        setIncomingFiles((prev) =>
-          prev.map((f) => (f.id === fileId ? { ...f, downloaded: true, status: 'verified' } : f))
-        );
-      }
-    } catch (err) {
-      console.error('Download error:', err);
-    }
-  };
-
-  const handleDownloadAll = async () => {
+  const startDownloadAll = async () => {
     if (!activeSession) return;
     setIsDownloadingAll(true);
-    for (const f of incomingFiles) {
-      const url = api.getDownloadUrl(activeSession.id, f.id);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', f.name);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
 
-      await api.verifyTransfer(activeSession.id, f.id, f.sha256);
-      await new Promise((r) => setTimeout(r, 600));
+    for (const f of incomingFiles) {
+      if (f.downloaded || f.status === 'verified') continue;
+
+      try {
+        setIncomingFiles((prev) =>
+          prev.map((item) =>
+            item.id === f.id ? { ...item, status: 'downloading', progressPercent: 0 } : item
+          )
+        );
+
+        const sha = await api.downloadFileWithProgress(
+          activeSession.id,
+          f.id,
+          f.name,
+          f.size,
+          (loaded, total) => {
+            const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 50;
+            setIncomingFiles((prev) =>
+              prev.map((item) =>
+                item.id === f.id ? { ...item, progressPercent: percent } : item
+              )
+            );
+          }
+        );
+
+        await api.verifyTransfer(activeSession.id, f.id, sha || f.sha256);
+
+        setIncomingFiles((prev) =>
+          prev.map((item) =>
+            item.id === f.id
+              ? { ...item, downloaded: true, status: 'verified', progressPercent: 100 }
+              : item
+          )
+        );
+      } catch (err) {
+        console.error(`Download failed for ${f.name}:`, err);
+        setIncomingFiles((prev) =>
+          prev.map((item) => (item.id === f.id ? { ...item, status: 'failed' } : item))
+        );
+      }
     }
 
     await refreshHistory();
     setIsDownloadingAll(false);
+    setTransferSuccess(true);
 
-    // Cancel and reset everything after receiving all files
+    // Clean up and cancel session after files are safely received
     setTimeout(async () => {
       try {
         await api.cancelSession(activeSession.id);
@@ -259,7 +253,68 @@ export const ReceivePage: React.FC = () => {
       clearSession();
       setIncomingFiles([]);
       setIsAccepted(false);
-    }, 1500);
+      setTransferSuccess(false);
+    }, 3000);
+  };
+
+  // Download a single file individually
+  const handleDownloadFile = async (fileId: string) => {
+    if (!activeSession) return;
+    const f = incomingFiles.find((item) => item.id === fileId);
+    if (!f) return;
+
+    try {
+      setIncomingFiles((prev) =>
+        prev.map((item) =>
+          item.id === fileId ? { ...item, status: 'downloading', progressPercent: 0 } : item
+        )
+      );
+
+      const sha = await api.downloadFileWithProgress(
+        activeSession.id,
+        f.id,
+        f.name,
+        f.size,
+        (loaded, total) => {
+          const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 50;
+          setIncomingFiles((prev) =>
+            prev.map((item) =>
+              item.id === fileId ? { ...item, progressPercent: percent } : item
+            )
+          );
+        }
+      );
+
+      await api.verifyTransfer(activeSession.id, f.id, sha || f.sha256);
+      await refreshHistory();
+
+      setIncomingFiles((prev) => {
+        const next = prev.map((item) =>
+          item.id === fileId
+            ? { ...item, downloaded: true, status: 'verified', progressPercent: 100 }
+            : item
+        );
+        const allDone = next.every((item) => item.downloaded || item.status === 'verified');
+        if (allDone) {
+          setTransferSuccess(true);
+          setTimeout(async () => {
+            try {
+              await api.cancelSession(activeSession.id);
+            } catch {}
+            clearSession();
+            setIncomingFiles([]);
+            setIsAccepted(false);
+            setTransferSuccess(false);
+          }, 3000);
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error(`Download failed for ${f.name}:`, err);
+      setIncomingFiles((prev) =>
+        prev.map((item) => (item.id === fileId ? { ...item, status: 'failed' } : item))
+      );
+    }
   };
 
   const renderFileCategoryIcon = (category: string) => {
@@ -283,49 +338,69 @@ export const ReceivePage: React.FC = () => {
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto pb-12">
-      {/* Code Entry Card when not joined */}
+      {/* Page Title */}
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+          Receive Files
+        </h2>
+        <p className="text-sm text-[var(--text-muted)] mt-1">
+          Connect to a sender by pairing code or direct link to receive original files with cryptographic verification.
+        </p>
+      </div>
+
+      {/* Code Entry Card (if not connected) */}
       {!isReceiverSession && (
         <div className="p-8 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] text-center space-y-6 shadow-sm">
-          <div className="w-16 h-16 rounded-2xl bg-[#7C3AED]/15 border border-[#7C3AED]/30 flex items-center justify-center mx-auto text-[#8B5CF6]">
-            <KeyRound className="w-8 h-8" />
+          <div className="w-16 h-16 rounded-2xl bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center mx-auto text-[#10B981]">
+            <ArrowDownLeft className="w-8 h-8" />
           </div>
 
-          <div className="max-w-md mx-auto">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Enter Pairing Code</h2>
-            <p className="text-xs text-[var(--text-muted)] mt-2 leading-relaxed">
-              Enter the 6-digit session code generated on the sending browser to establish a direct, zero-cloud connection.
+          <div className="max-w-md mx-auto space-y-2">
+            <h3 className="text-lg font-bold text-[var(--text-primary)]">
+              Enter 6-Digit Pairing Code
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Ask the sender for their pairing code displayed on their screen, or open their direct session link.
             </p>
           </div>
 
-          <div className="max-w-xs mx-auto space-y-4">
-            <input
-              type="text"
-              maxLength={7}
-              placeholder="e.g. 583-291"
-              value={pairingCodeInput}
-              onChange={handlePairingCodeChange}
-              onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-              className="w-full text-center text-3xl font-mono font-bold tracking-widest px-4 py-3 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 transition-all placeholder:text-[var(--text-muted)]"
-            />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleJoin();
+            }}
+            className="max-w-sm mx-auto space-y-4"
+          >
+            <div className="relative">
+              <input
+                type="text"
+                value={pairingCodeInput}
+                onChange={handlePairingCodeChange}
+                placeholder="482-915"
+                maxLength={7}
+                autoFocus
+                className="w-full text-center text-3xl font-mono font-extrabold tracking-widest px-4 py-4 rounded-xl bg-[var(--bg-card-subtle)] border-2 border-[var(--border-subtle)] focus:border-[#7C3AED] focus:outline-none text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] placeholder:font-normal placeholder:tracking-normal placeholder:text-lg"
+              />
+            </div>
 
             <button
-              onClick={() => handleJoin()}
+              type="submit"
               disabled={isJoining || pairingCodeInput.replace(/[^0-9]/g, '').length < 6}
-              className="w-full inline-flex items-center justify-center space-x-2 px-6 py-3.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold text-sm transition-all shadow-lg shadow-[#7C3AED]/30 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full py-3.5 px-6 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold text-sm transition-all shadow-lg shadow-[#7C3AED]/25 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center justify-center space-x-2"
             >
               {isJoining ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connecting...</span>
+                  <span>Connecting Securely...</span>
                 </>
               ) : (
                 <>
-                  <ArrowDownLeft className="w-4 h-4" />
-                  <span>Connect to Sender</span>
+                  <KeyRound className="w-4 h-4" />
+                  <span>Connect & Receive</span>
                 </>
               )}
             </button>
-          </div>
+          </form>
 
           {joinError && (
             <div className="max-w-md mx-auto p-4 rounded-xl bg-[#EF4444]/15 border border-[#EF4444]/30 text-[#EF4444] text-xs flex items-center space-x-2 text-left">
@@ -344,6 +419,17 @@ export const ReceivePage: React.FC = () => {
       {/* Receiver Connected View */}
       {isReceiverSession && activeSession && (
         <div className="space-y-6 animate-fadeIn">
+          {/* Transfer Success Banner */}
+          {transferSuccess && (
+            <div className="p-4 rounded-2xl bg-[#10B981]/15 border border-[#10B981]/30 text-[#10B981] flex items-center space-x-3 shadow-sm animate-fadeIn">
+              <CheckCircle2 className="w-6 h-6 shrink-0" />
+              <div>
+                <p className="font-bold text-sm">Transfer Complete!</p>
+                <p className="text-xs opacity-90">All files have been received safely and verified. Cleaning up session...</p>
+              </div>
+            </div>
+          )}
+
           {/* Session Banner */}
           <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
             <div>
@@ -357,7 +443,7 @@ export const ReceivePage: React.FC = () => {
                 Connected to Sender (Code: {activeSession.pairingCode})
               </h3>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Local direct transfer session active. Review and receive incoming files.
+                Local direct transfer session active. Click Accept to receive original files directly to this device.
               </p>
             </div>
 
@@ -388,7 +474,7 @@ export const ReceivePage: React.FC = () => {
 
               {isAccepted && incomingFiles.length > 1 && (
                 <button
-                  onClick={handleDownloadAll}
+                  onClick={startDownloadAll}
                   disabled={isDownloadingAll}
                   className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
                 >
@@ -426,21 +512,40 @@ export const ReceivePage: React.FC = () => {
                       </div>
 
                       <div className="flex items-center space-x-3">
-                        {file.status === 'verified' || file.downloaded ? (
+                        {file.status === 'downloading' && (
+                          <div className="flex items-center space-x-2">
+                            <div className="w-24 h-2 rounded-full bg-[var(--bg-card-subtle)] overflow-hidden hidden sm:block">
+                              <div
+                                className="h-full bg-gradient-to-r from-[#7C3AED] to-[#10B981] transition-all duration-150"
+                                style={{ width: `${file.progressPercent || 0}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-xs font-mono font-semibold text-[#8B5CF6] flex items-center space-x-1">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>{file.progressPercent || 0}%</span>
+                            </span>
+                          </div>
+                        )}
+
+                        {(file.status === 'verified' || file.downloaded) && (
                           <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#10B981]/15 text-[#10B981] flex items-center space-x-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Received</span>
                           </span>
-                        ) : isAccepted ? (
-                          <button
-                            onClick={() => handleDownloadFile(file.id)}
-                            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors shadow-sm"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
-                          </button>
-                        ) : (
-                          <span className="text-xs text-[var(--text-muted)]">Awaiting acceptance</span>
+                        )}
+
+                        {file.status !== 'downloading' && !file.downloaded && file.status !== 'verified' && (
+                          isAccepted ? (
+                            <button
+                              onClick={() => handleDownloadFile(file.id)}
+                              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors shadow-sm"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-[var(--text-muted)]">Awaiting acceptance</span>
+                          )
                         )}
                       </div>
                     </div>

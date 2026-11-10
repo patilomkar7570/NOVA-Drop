@@ -49,7 +49,20 @@ export function createApp() {
       }
     },
     credentials: true,
+    exposedHeaders: ['Content-Disposition', 'Content-Length', 'X-NOVA-SHA256'],
   }));
+
+  // Diagnostic request logger for transparency and debugging
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      if (req.path.startsWith('/api') || req.path.includes('/download')) {
+        const duration = Date.now() - start;
+        console.log(`[HTTP] ${req.method} ${req.path} -> ${res.statusCode} (${duration}ms)`);
+      }
+    });
+    next();
+  });
 
   // JSON parser for non-upload endpoints
   app.use((req, res, next) => {

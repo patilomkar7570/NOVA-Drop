@@ -16,10 +16,11 @@ import {
   Layers,
   StopCircle,
   Send,
+  Loader2,
 } from 'lucide-react';
 import { FileItem } from '../types/index.js';
 import { useTransfers } from '../context/TransferContext.js';
-import { formatBytes, formatSpeed, getFileCategory } from '../utils/formatters.js';
+import { formatBytes, getFileCategory } from '../utils/formatters.js';
 import * as api from '../services/api.js';
 import { wsClient } from '../services/websocket.js';
 
@@ -32,14 +33,16 @@ export const SendPage: React.FC = () => {
     updateFiles,
     clearSession,
     refreshHistory,
+    systemStatus,
   } = useTransfers();
 
   const [isDragging, setIsDragging] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [isTransferring, setIsTransferring] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,6 +101,7 @@ export const SendPage: React.FC = () => {
     updateFiles(() => []);
   };
 
+  // Start Session and immediately stream files to local engine storage
   const handleStartSession = async () => {
     if (files.length === 0) return;
 
@@ -105,8 +109,10 @@ export const SendPage: React.FC = () => {
       setIsCreatingSession(true);
       setTransferError(null);
 
+      // 1. Create backend session
       const sessionRes = await api.createSession();
 
+      // 2. Register file manifest
       const manifestList = files.map((f) => ({
         name: f.name,
         size: f.size,
@@ -115,122 +121,29 @@ export const SendPage: React.FC = () => {
 
       const registered = await api.registerFiles(sessionRes.sessionId, manifestList);
 
-      updateFiles((prev) =>
-        prev.map((item, idx) => ({
-          ...item,
-          id: registered[idx]?.id || item.id,
-        }))
-      );
+      // Map registered IDs to our local File objects
+      const updatedList: FileItem[] = files.map((item, idx) => ({
+        ...item,
+        id: registered[idx]?.id || item.id,
+      }));
+      updateFiles(() => updatedList);
 
+      // Connect to WebSocket
       wsClient.connect(sessionRes.sessionId, 'sender', sessionRes.token);
       setSession(sessionRes.session, 'sender', sessionRes.token);
-    } catch (err) {
-      console.error('Failed to create session:', err);
-      setTransferError((err as Error).message || 'Failed to initialize transfer session');
-    } finally {
       setIsCreatingSession(false);
-    }
-  };
 
-  useEffect(() => {
-    if (!isSenderSession || !activeSession) return;
+      // 3. Immediately stream upload files to local engine so receiver can download instantly
+      setIsUploadingFiles(true);
+      for (const item of updatedList) {
+        if (!item.file) continue;
 
-    const unsubPeerJoined = wsClient.on('peer_joined', (data) => {
-      if (data.role === 'receiver') {
-        setSession({ ...activeSession, hasReceiver: true, status: 'connected' }, 'sender', null);
-      }
-    });
+        updateFiles((prev) =>
+          prev.map((f) => (f.id === item.id ? { ...f, status: 'uploading' } : f))
+        );
 
-    const unsubTransferAccepted = wsClient.on('transfer_accepted', async () => {
-      startStreamingUploads();
-    });
-
-    const unsubProgress = wsClient.on('transfer_progress', (data) => {
-      updateFiles((prev) =>
-        prev.map((f) => {
-          if (f.id === data.fileId) {
-            return {
-              ...f,
-              bytesTransferred: data.bytesTransferred,
-              speedBps: data.speedBps,
-              etaSeconds: data.etaSeconds,
-            };
-          }
-          return f;
-        })
-      );
-    });
-
-    const unsubFileReady = wsClient.on('file_ready', (data) => {
-      updateFiles((prev) =>
-        prev.map((f) => {
-          if (f.id === data.fileId) {
-            return {
-              ...f,
-              sha256: data.sha256,
-              status: 'uploaded',
-            };
-          }
-          return f;
-        })
-      );
-    });
-
-    const unsubFileVerified = wsClient.on('file_verified', (data) => {
-      updateFiles((prev) =>
-        prev.map((f) => {
-          if (f.id === data.fileId) {
-            return {
-              ...f,
-              sha256: data.sha256,
-              status: data.verified ? 'verified' : 'failed',
-            };
-          }
-          return f;
-        })
-      );
-      refreshHistory();
-    });
-
-    const unsubCompleted = wsClient.on('session_completed', () => {
-      setIsTransferring(false);
-      refreshHistory();
-      // Auto-cancel and reset session after receiver has received it
-      setTimeout(() => {
-        clearSession();
-      }, 2500);
-    });
-
-    const unsubCancelled = wsClient.on('session_cancelled', () => {
-      setIsTransferring(false);
-      clearSession();
-    });
-
-    return () => {
-      unsubPeerJoined();
-      unsubTransferAccepted();
-      unsubProgress();
-      unsubFileReady();
-      unsubFileVerified();
-      unsubCompleted();
-      unsubCancelled();
-    };
-  }, [isSenderSession, activeSession, files]);
-
-  const startStreamingUploads = async () => {
-    if (!activeSession) return;
-    setIsTransferring(true);
-
-    for (const item of files) {
-      if (!item.file) continue;
-
-      updateFiles((prev) =>
-        prev.map((f) => (f.id === item.id ? { ...f, status: 'uploading' } : f))
-      );
-
-      try {
         const uploadResult = await api.uploadFileStream(
-          activeSession.id,
+          sessionRes.sessionId,
           item.id,
           item.file,
           (loaded) => {
@@ -254,16 +167,66 @@ export const SendPage: React.FC = () => {
               : f
           )
         );
-      } catch (err) {
-        console.error(`Upload error for file ${item.name}:`, err);
-        updateFiles((prev) =>
-          prev.map((f) =>
-            f.id === item.id ? { ...f, status: 'failed', error: (err as Error).message } : f
-          )
-        );
       }
+      setIsUploadingFiles(false);
+    } catch (err) {
+      console.error('Failed to create session:', err);
+      setTransferError((err as Error).message || 'Failed to initialize transfer session');
+      setIsCreatingSession(false);
+      setIsUploadingFiles(false);
     }
   };
+
+  useEffect(() => {
+    if (!isSenderSession || !activeSession) return;
+
+    const unsubPeerJoined = wsClient.on('peer_joined', (data) => {
+      if (data.role === 'receiver') {
+        setSession({ ...activeSession, hasReceiver: true, status: 'connected' }, 'sender', null);
+      }
+    });
+
+    const unsubTransferAccepted = wsClient.on('transfer_accepted', () => {
+      setSession({ ...activeSession, status: 'transferring' }, 'sender', null);
+    });
+
+    const unsubFileVerified = wsClient.on('file_verified', (data) => {
+      updateFiles((prev) =>
+        prev.map((f) => {
+          if (f.id === data.fileId) {
+            return {
+              ...f,
+              sha256: data.sha256,
+              status: data.verified ? 'verified' : 'failed',
+            };
+          }
+          return f;
+        })
+      );
+      refreshHistory();
+    });
+
+    const unsubCompleted = wsClient.on('session_completed', () => {
+      refreshHistory();
+      setTransferSuccess(true);
+      setTimeout(() => {
+        clearSession();
+        setTransferSuccess(false);
+      }, 3000);
+    });
+
+    const unsubCancelled = wsClient.on('session_cancelled', () => {
+      clearSession();
+    });
+
+    return () => {
+      unsubPeerJoined();
+      unsubTransferAccepted();
+      unsubFileVerified();
+      unsubCompleted();
+      unsubCancelled();
+    };
+  }, [isSenderSession, activeSession, files]);
 
   const handleCancelSession = async () => {
     if (activeSession) {
@@ -272,7 +235,7 @@ export const SendPage: React.FC = () => {
       } catch {}
     }
     clearSession();
-    setIsTransferring(false);
+    setIsUploadingFiles(false);
   };
 
   const copyPairingCode = () => {
@@ -282,9 +245,19 @@ export const SendPage: React.FC = () => {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  // Ensure direct link uses Wi-Fi IP so mobile devices on the local network can open it
+  const getDirectLink = () => {
+    if (!activeSession) return '';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocalhost && systemStatus?.localWifiUrl
+      ? systemStatus.localWifiUrl
+      : window.location.origin;
+    return `${baseUrl}/?pair=${activeSession.pairingCode}`;
+  };
+
   const copyDirectLink = () => {
     if (!activeSession) return;
-    const url = `${window.location.origin}/?pair=${activeSession.pairingCode}`;
+    const url = getDirectLink();
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -293,7 +266,6 @@ export const SendPage: React.FC = () => {
   const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
   const transferredBytes = files.reduce((acc, f) => acc + f.bytesTransferred, 0);
   const totalPercent = totalBytes > 0 ? Math.min(100, Math.round((transferredBytes / totalBytes) * 100)) : 0;
-  const currentSpeed = files.reduce((acc, f) => acc + (f.speedBps || 0), 0);
 
   const renderFileCategoryIcon = (category: string) => {
     switch (category) {
@@ -317,6 +289,16 @@ export const SendPage: React.FC = () => {
       {/* Session Active Header / Pairing Info */}
       {isSenderSession && activeSession && (
         <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-6 animate-fadeIn shadow-sm">
+          {transferSuccess && (
+            <div className="p-4 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 text-[#10B981] flex items-center space-x-3">
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+              <div>
+                <p className="font-bold text-sm">Transfer Completed Successfully!</p>
+                <p className="text-xs opacity-90">All files have been received by the receiver. Cleaning up temporary session...</p>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[var(--border-subtle)]">
             <div>
               <div className="flex items-center space-x-2">
@@ -326,12 +308,14 @@ export const SendPage: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
               </div>
               <h3 className="text-lg font-bold text-[var(--text-primary)] mt-1">
-                {activeSession.hasReceiver
-                  ? 'Receiver Connected — Ready for Transfer'
+                {activeSession.status === 'transferring'
+                  ? 'Receiver Downloading Files...'
+                  : activeSession.hasReceiver
+                  ? 'Receiver Connected — Ready for Download'
                   : 'Waiting for Receiver to Connect...'}
               </h3>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Open NOVA Drop in another browser window or tab and enter the code below.
+                Open NOVA Drop on another device (phone, tablet, PC) and enter the code below.
               </p>
             </div>
 
@@ -363,17 +347,17 @@ export const SendPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Direct Link Card - Uses Copy icon instead of share */}
+            {/* Direct Link Card - Uses Copy icon and Local Wi-Fi IP */}
             <div className="p-4 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] flex items-center justify-between">
-              <div>
-                <span className="text-xs text-[var(--text-muted)]">Direct Session Link:</span>
-                <div className="text-xs font-mono text-[var(--text-secondary)] truncate max-w-[200px] mt-1">
-                  http://localhost:3000/?pair={activeSession.pairingCode}
+              <div className="min-w-0 pr-2">
+                <span className="text-xs text-[var(--text-muted)]">Direct Session Link (Wi-Fi):</span>
+                <div className="text-xs font-mono text-[var(--text-secondary)] truncate max-w-[240px] mt-1" title={getDirectLink()}>
+                  {getDirectLink()}
                 </div>
               </div>
               <button
                 onClick={copyDirectLink}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-[var(--bg-sidebar)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold transition-colors border border-[var(--border-subtle)] shadow-sm"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-[var(--bg-sidebar)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold transition-colors border border-[var(--border-subtle)] shadow-sm shrink-0"
               >
                 {copiedLink ? <Check className="w-4 h-4 text-[#10B981]" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedLink ? 'Copied Link' : 'Copy Link'}</span>
@@ -381,31 +365,23 @@ export const SendPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Overall Progress when transferring */}
-          {(isTransferring || files.some((f) => f.status === 'uploading' || f.status === 'uploaded')) && (
+          {/* Uploading progress to engine */}
+          {isUploadingFiles && (
             <div className="pt-4 border-t border-[var(--border-subtle)] space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-[var(--text-primary)]">Transfer Progress</span>
+                <span className="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8B5CF6]" />
+                  <span>Preparing Files for Transfer...</span>
+                </span>
                 <span className="text-[#8B5CF6] font-mono">
                   {formatBytes(transferredBytes)} / {formatBytes(totalBytes)} ({totalPercent}%)
                 </span>
               </div>
-              <div className="w-full h-2.5 rounded-full bg-[var(--bg-card-subtle)] overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-[var(--bg-card-subtle)] overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#7C3AED] to-[#10B981] transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-[#7C3AED] to-[#10B981] transition-all duration-200"
                   style={{ width: `${totalPercent}%` }}
                 ></div>
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-1">
-                <span>Speed: {formatSpeed(currentSpeed)}</span>
-                <span>
-                  Status:{' '}
-                  {totalPercent === 100
-                    ? 'Transfer complete — resetting session'
-                    : isTransferring
-                    ? 'Streaming...'
-                    : 'Ready'}
-                </span>
               </div>
             </div>
           )}
@@ -484,7 +460,6 @@ export const SendPage: React.FC = () => {
           <div className="divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto pr-1">
             {files.map((item) => {
               const category = getFileCategory(item.name, item.type);
-              const percent = item.size > 0 ? Math.min(100, Math.round((item.bytesTransferred / item.size) * 100)) : 0;
 
               return (
                 <div key={item.id} className="py-3.5 flex items-center justify-between text-sm group">
@@ -509,16 +484,14 @@ export const SendPage: React.FC = () => {
                   <div className="flex items-center space-x-4">
                     {/* Status Badge */}
                     {item.status === 'uploading' && (
-                      <div className="text-right">
-                        <span className="text-xs font-mono text-[#8B5CF6] font-medium">
-                          {percent}%
-                        </span>
-                        <p className="text-[10px] text-[var(--text-muted)]">{formatSpeed(item.speedBps)}</p>
-                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#7C3AED]/15 text-[#8B5CF6] flex items-center space-x-1">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Uploading...</span>
+                      </span>
                     )}
 
                     {item.status === 'uploaded' && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#7C3AED]/15 text-[#8B5CF6] flex items-center space-x-1">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#10B981]/15 text-[#10B981] flex items-center space-x-1">
                         <Check className="w-3.5 h-3.5" />
                         <span>Ready</span>
                       </span>
@@ -528,13 +501,6 @@ export const SendPage: React.FC = () => {
                       <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#10B981]/15 text-[#10B981] flex items-center space-x-1">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>Transferred</span>
-                      </span>
-                    )}
-
-                    {item.status === 'failed' && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#EF4444]/15 text-[#EF4444] flex items-center space-x-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        <span>Failed</span>
                       </span>
                     )}
 

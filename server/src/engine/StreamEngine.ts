@@ -154,6 +154,15 @@ export class StreamEngine {
       return;
     }
 
+    // If file is still being streamed from sender to local storage, wait up to 30s
+    if (file.status === 'uploading' || file.status === 'pending') {
+      let waited = 0;
+      while ((file.status === 'uploading' || file.status === 'pending') && waited < 30000) {
+        await new Promise((r) => setTimeout(r, 200));
+        waited += 200;
+      }
+    }
+
     const tempFilePath = this.storageManager.getFilePath(sessionId, fileId);
     if (!fs.existsSync(tempFilePath)) {
       res.status(404).json({ error: 'Temporary file not found or already cleaned up' });

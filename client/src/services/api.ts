@@ -147,6 +147,75 @@ export function getDownloadUrl(sessionId: string, fileId: string): string {
   return `${API_BASE}/sessions/${sessionId}/files/${fileId}/download`;
 }
 
+export async function downloadFileWithProgress(
+  sessionId: string,
+  fileId: string,
+  filename: string,
+  fileSize: number,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<string> {
+  const url = getDownloadUrl(sessionId, fileId);
+
+  // Large files (> 300MB) can be downloaded directly via browser anchor stream
+  if (fileSize > 300 * 1024 * 1024) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return '';
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download "${filename}" (HTTP ${response.status})`);
+  }
+
+  const sha256 = response.headers.get('x-nova-sha256') || '';
+  const contentLength = response.headers.get('content-length');
+  const total = contentLength ? parseInt(contentLength, 10) : fileSize;
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const blob = await response.blob();
+    saveBlobAsFile(blob, filename);
+    return sha256;
+  }
+
+  const chunks: any[] = [];
+  let receivedBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      receivedBytes += value.length;
+      if (onProgress) {
+        onProgress(receivedBytes, total);
+      }
+    }
+  }
+
+  const blob = new Blob(chunks, {
+    type: response.headers.get('content-type') || 'application/octet-stream',
+  });
+  saveBlobAsFile(blob, filename);
+  return sha256;
+}
+
+function saveBlobAsFile(blob: Blob, filename: string) {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+}
+
 export async function verifyTransfer(
   sessionId: string,
   fileId: string,
