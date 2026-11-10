@@ -41,15 +41,19 @@ jobs:
       - name: Build Android APK
         working-directory: android
         run: |
-          gradle assembleRelease --stacktrace || gradle assembleDebug
+          gradle assembleDebug assembleRelease || gradle assembleDebug
+
+      - name: Rename APK for release
+        run: |
+          mkdir -p release-apk
+          find android/app/build/outputs/apk -name "*.apk" -exec cp {} release-apk/ \;
+          ls -la release-apk/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NOVADrop-APK
-          path: |
-            android/app/build/outputs/apk/release/*.apk
-            android/app/build/outputs/apk/debug/*.apk
+          name: NOVADrop-Android-APK
+          path: release-apk/*.apk
           if-no-files-found: warn
           retention-days: 30
 
@@ -57,8 +61,6 @@ jobs:
         if: startsWith(github.ref, 'tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            android/app/build/outputs/apk/release/*.apk
-            android/app/build/outputs/apk/debug/*.apk
+          files: release-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
