@@ -22,6 +22,7 @@ export interface FileItem {
   id: string;
   file?: File;
   name: string;
+  relativePath?: string;
   size: number;
   type: string;
   sha256?: string;
@@ -43,6 +44,7 @@ export interface SessionData {
   files: Array<{
     id: string;
     name: string;
+    relativePath?: string;
     size: number;
     type: string;
     sha256?: string;

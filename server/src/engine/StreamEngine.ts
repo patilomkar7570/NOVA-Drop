@@ -188,6 +188,9 @@ export class StreamEngine {
     if (file.sha256) {
       res.setHeader('X-NOVA-SHA256', file.sha256);
     }
+    if (file.relativePath) {
+      res.setHeader('X-NOVA-Relative-Path', encodeURIComponent(file.relativePath));
+    }
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     file.status = 'downloading';

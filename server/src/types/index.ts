@@ -19,6 +19,7 @@ export type FileTransferStatus =
 export interface FileManifest {
   id: string;
   name: string;
+  relativePath?: string;
   size: number;
   type: string;
   sha256?: string; // Precomputed by sender or verified by backend

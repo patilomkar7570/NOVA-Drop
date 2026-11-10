@@ -181,6 +181,7 @@ export class SessionManager {
     sessionId: string,
     fileList: Array<{
       name: string;
+      relativePath?: string;
       size: number;
       type: string;
       sha256?: string;
@@ -197,6 +198,7 @@ export class SessionManager {
       const manifest: FileManifest = {
         id: fileId,
         name: f.name,
+        relativePath: f.relativePath,
         size: f.size,
         type: f.type || 'application/octet-stream',
         sha256: f.sha256,

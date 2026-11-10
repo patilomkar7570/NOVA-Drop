@@ -49,7 +49,7 @@ export function createApp() {
       }
     },
     credentials: true,
-    exposedHeaders: ['Content-Disposition', 'Content-Length', 'X-NOVA-SHA256'],
+    exposedHeaders: ['Content-Disposition', 'Content-Length', 'X-NOVA-SHA256', 'X-NOVA-Relative-Path'],
   }));
 
   // Diagnostic request logger for transparency and debugging

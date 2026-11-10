@@ -17,6 +17,9 @@ import {
   StopCircle,
   Send,
   Loader2,
+  Folder,
+  FolderUp,
+  FileUp,
 } from 'lucide-react';
 import { FileItem } from '../types/index.js';
 import { useTransfers } from '../context/TransferContext.js';
@@ -45,8 +48,17 @@ export const SendPage: React.FC = () => {
   const [transferSuccess, setTransferSuccess] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const isSenderSession = activeSession && activeSessionRole === 'sender';
+
+  useEffect(() => {
+    // Configure webkitdirectory on folderInputRef to enable directory selection
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute('webkitdirectory', '');
+      folderInputRef.current.setAttribute('directory', '');
+    }
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -60,28 +72,87 @@ export const SendPage: React.FC = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFiles(Array.from(e.dataTransfer.files));
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      const scanned = await scanDroppedItems(e.dataTransfer.items);
+      if (scanned.length > 0) {
+        updateFiles((prev) => [...prev, ...scanned]);
+        return;
+      }
     }
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFilesFromList(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const scanDroppedItems = async (items: DataTransferItemList): Promise<FileItem[]> => {
+    const collected: FileItem[] = [];
+
+    const traverse = async (entry: any, currentPath = ''): Promise<void> => {
+      if (entry.isFile) {
+        const file: File = await new Promise((res) => entry.file(res));
+        const rel = currentPath ? `${currentPath}/${file.name}` : file.name;
+        collected.push({
+          id: crypto.randomUUID(),
+          file,
+          name: file.name,
+          relativePath: rel,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          status: 'pending',
+          bytesTransferred: 0,
+          speedBps: 0,
+          etaSeconds: 0,
+        });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readEntries = (): Promise<any[]> => new Promise((res) => reader.readEntries(res));
+        let batch: any[];
+        do {
+          batch = await readEntries();
+          for (const item of batch) {
+            await traverse(item, currentPath ? `${currentPath}/${entry.name}` : entry.name);
+          }
+        } while (batch.length > 0);
+      }
+    };
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.webkitGetAsEntry) {
+        const entry = item.webkitGetAsEntry();
+        if (entry) await traverse(entry);
+      }
+    }
+
+    return collected;
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      addFiles(Array.from(e.target.files));
+      addFilesFromList(Array.from(e.target.files));
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const addFiles = (selectedFiles: File[]) => {
+  const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      addFilesFromList(Array.from(e.target.files));
+    }
+    if (folderInputRef.current) folderInputRef.current.value = '';
+  };
+
+  const addFilesFromList = (selectedFiles: File[]) => {
     const newItems: FileItem[] = selectedFiles.map((file) => ({
       id: crypto.randomUUID(),
       file,
       name: file.name,
+      relativePath: file.webkitRelativePath || file.name,
       size: file.size,
       type: file.type || 'application/octet-stream',
       status: 'pending',
@@ -112,9 +183,10 @@ export const SendPage: React.FC = () => {
       // 1. Create backend session
       const sessionRes = await api.createSession();
 
-      // 2. Register file manifest
+      // 2. Register file manifest (including relativePath for folders)
       const manifestList = files.map((f) => ({
         name: f.name,
+        relativePath: f.relativePath,
         size: f.size,
         type: f.type,
       }));
@@ -267,6 +339,17 @@ export const SendPage: React.FC = () => {
   const transferredBytes = files.reduce((acc, f) => acc + f.bytesTransferred, 0);
   const totalPercent = totalBytes > 0 ? Math.min(100, Math.round((transferredBytes / totalBytes) * 100)) : 0;
 
+  // Count unique folders in selection
+  const folderSet = new Set<string>();
+  files.forEach((f) => {
+    if (f.relativePath && f.relativePath.includes('/')) {
+      const parts = f.relativePath.split('/');
+      parts.pop();
+      folderSet.add(parts.join('/'));
+    }
+  });
+  const folderCount = folderSet.size;
+
   const renderFileCategoryIcon = (category: string) => {
     switch (category) {
       case 'image':
@@ -286,6 +369,22 @@ export const SendPage: React.FC = () => {
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
+      {/* Hidden File and Folder Inputs */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInputChange}
+        multiple
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={folderInputRef}
+        onChange={handleFolderInputChange}
+        multiple
+        className="hidden"
+      />
+
       {/* Session Active Header / Pairing Info */}
       {isSenderSession && activeSession && (
         <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-6 animate-fadeIn shadow-sm">
@@ -294,7 +393,7 @@ export const SendPage: React.FC = () => {
               <CheckCircle2 className="w-5 h-5 shrink-0" />
               <div>
                 <p className="font-bold text-sm">Transfer Completed Successfully!</p>
-                <p className="text-xs opacity-90">All files have been received by the receiver. Cleaning up temporary session...</p>
+                <p className="text-xs opacity-90">All files and folders have been received by the receiver. Cleaning up temporary session...</p>
               </div>
             </div>
           )}
@@ -347,7 +446,7 @@ export const SendPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Direct Link Card - Uses Copy icon and Local Wi-Fi IP */}
+            {/* Direct Link Card */}
             <div className="p-4 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] flex items-center justify-between">
               <div className="min-w-0 pr-2">
                 <span className="text-xs text-[var(--text-muted)]">Direct Session Link (Wi-Fi):</span>
@@ -371,7 +470,7 @@ export const SendPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8B5CF6]" />
-                  <span>Preparing Files for Transfer...</span>
+                  <span>Preparing Items for Transfer...</span>
                 </span>
                 <span className="text-[#8B5CF6] font-mono">
                   {formatBytes(transferredBytes)} / {formatBytes(totalBytes)} ({totalPercent}%)
@@ -388,58 +487,70 @@ export const SendPage: React.FC = () => {
         </div>
       )}
 
-      {/* Drag & Drop Upload Zone */}
+      {/* Drag & Drop Upload Zone with Dual Selection Buttons */}
       {!isSenderSession && (
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-200 select-none ${
+          className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 select-none ${
             isDragging
               ? 'border-[#7C3AED] bg-[#7C3AED]/10 scale-[1.01]'
               : 'border-[var(--border-card)] hover:border-[#7C3AED]/60 bg-[var(--bg-card)]/60 hover:bg-[var(--bg-card)]'
           }`}
         >
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileInputChange}
-            multiple
-            className="hidden"
-          />
-
-          <div className="max-w-md mx-auto space-y-4">
+          <div className="max-w-lg mx-auto space-y-5">
             <div className="w-16 h-16 rounded-2xl bg-[#7C3AED]/15 border border-[#7C3AED]/30 flex items-center justify-center mx-auto text-[#8B5CF6]">
               <UploadCloud className="w-8 h-8" />
             </div>
 
             <div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)]">
-                Drag and drop files here, or{' '}
-                <span className="text-[#8B5CF6] underline underline-offset-4">browse</span>
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">
+                Drag and drop files or folders here
               </h3>
               <p className="text-xs text-[var(--text-muted)] mt-1.5">
-                Support for all file formats. Files are streamed byte-for-byte with zero compression or quality loss.
+                Support for all formats and entire directory structures. Transferred byte-for-byte with zero compression or quality loss.
               </p>
+            </div>
+
+            {/* Dual Selection Buttons: Upload Files / Upload Folders */}
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold shadow-md shadow-[#7C3AED]/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <FileUp className="w-4 h-4" />
+                <span>Upload Files</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => folderInputRef.current?.click()}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-subtle)] shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <FolderUp className="w-4 h-4 text-[#8B5CF6]" />
+                <span>Upload Folders</span>
+              </button>
             </div>
 
             <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)]">
               <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
-              <span>Full original quality preserved identically</span>
+              <span>Full original folder structure & quality preserved</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Selected Files List */}
+      {/* Selected Items List */}
       {files.length > 0 && (
         <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Layers className="w-5 h-5 text-[#8B5CF6]" />
               <h3 className="text-base font-bold text-[var(--text-primary)]">
-                Selected Files ({files.length})
+                Selected Items ({files.length} {files.length === 1 ? 'file' : 'files'}
+                {folderCount > 0 && ` across ${folderCount} ${folderCount === 1 ? 'folder' : 'folders'}`})
               </h3>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#7C3AED]/15 text-[#8B5CF6]">
                 Total: {formatBytes(totalBytes)}
@@ -460,17 +571,27 @@ export const SendPage: React.FC = () => {
           <div className="divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto pr-1">
             {files.map((item) => {
               const category = getFileCategory(item.name, item.type);
+              const isInsideFolder = item.relativePath && item.relativePath.includes('/');
 
               return (
                 <div key={item.id} className="py-3.5 flex items-center justify-between text-sm group">
                   <div className="flex items-center space-x-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                      {renderFileCategoryIcon(category)}
+                      {isInsideFolder ? (
+                        <Folder className="w-5 h-5 text-[#8B5CF6]" />
+                      ) : (
+                        renderFileCategoryIcon(category)
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-[var(--text-primary)] truncate max-w-sm" title={item.name}>
                         {item.name}
                       </p>
+                      {isInsideFolder && (
+                        <div className="flex items-center space-x-1 text-[11px] text-[#8B5CF6] font-mono truncate max-w-xs" title={item.relativePath}>
+                          <span className="truncate">{item.relativePath}</span>
+                        </div>
+                      )}
                       <div className="flex items-center space-x-2 text-xs text-[var(--text-muted)] mt-0.5">
                         <span title={`${item.size.toLocaleString()} bytes`}>
                           {formatBytes(item.size)}
@@ -523,7 +644,7 @@ export const SendPage: React.FC = () => {
           {!isSenderSession && (
             <div className="pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between">
               <span className="text-xs text-[var(--text-muted)]">
-                Ready to stream {files.length} file(s) ({formatBytes(totalBytes)})
+                Ready to stream {files.length} item(s) ({formatBytes(totalBytes)})
               </span>
               <button
                 onClick={handleStartSession}

@@ -31,6 +31,7 @@ Whether transferring original 4K video clips, high-resolution RAW photos, large 
 
 - **Privacy First**: Files stream directly through your local network. Zero external cloud storage, zero tracking, and zero telemetry.
 - **Zero Compression**: 100% byte-for-byte fidelity. Media is never transcoded, recompressed, or downscaled. Original filenames, extensions, and metadata are preserved.
+- **Full Folder & File Support**: Upload individual files or entire folders with nested directory structures using dedicated **Upload Files** and **Upload Folders** selectors.
 - **Line-Rate Local Speed**: Built on native streaming pipelines with backpressure handling for smooth gigabyte-scale transfers.
 - **Multi-Platform Support**:
   - **Windows (Portable EXE)**: Standalone single-file executable (`NOVA-Drop-Portable.exe`). Double-click to run immediately with zero installation.

@@ -57,8 +57,8 @@ export async function getSession(sessionId: string): Promise<SessionData> {
 
 export async function registerFiles(
   sessionId: string,
-  files: Array<{ name: string; size: number; type: string; sha256?: string }>
-): Promise<Array<{ id: string; name: string; size: number; type: string }>> {
+  files: Array<{ name: string; relativePath?: string; size: number; type: string; sha256?: string }>
+): Promise<Array<{ id: string; name: string; relativePath?: string; size: number; type: string }>> {
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/files`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

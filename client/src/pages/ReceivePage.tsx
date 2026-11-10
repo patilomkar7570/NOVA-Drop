@@ -15,6 +15,7 @@ import {
   KeyRound,
   Download,
   Loader2,
+  Folder,
 } from 'lucide-react';
 import { useTransfers } from '../context/TransferContext.js';
 import { formatBytes, formatPairingCode, getFileCategory } from '../utils/formatters.js';
@@ -24,6 +25,7 @@ import { wsClient } from '../services/websocket.js';
 interface IncomingItem {
   id: string;
   name: string;
+  relativePath?: string;
   size: number;
   type: string;
   sha256?: string;
@@ -88,6 +90,7 @@ export const ReceivePage: React.FC = () => {
           res.session.files.map((f) => ({
             id: f.id,
             name: f.name,
+            relativePath: f.relativePath,
             size: f.size,
             type: f.type,
             sha256: f.sha256,
@@ -113,6 +116,7 @@ export const ReceivePage: React.FC = () => {
         data.files.map((f: any) => ({
           id: f.id,
           name: f.name,
+          relativePath: f.relativePath,
           size: f.size,
           type: f.type,
           sha256: f.sha256,
@@ -336,15 +340,26 @@ export const ReceivePage: React.FC = () => {
 
   const totalIncomingBytes = incomingFiles.reduce((acc, f) => acc + f.size, 0);
 
+  // Count unique folders in incoming files
+  const folderSet = new Set<string>();
+  incomingFiles.forEach((f) => {
+    if (f.relativePath && f.relativePath.includes('/')) {
+      const parts = f.relativePath.split('/');
+      parts.pop();
+      folderSet.add(parts.join('/'));
+    }
+  });
+  const folderCount = folderSet.size;
+
   return (
     <div className="space-y-8 max-w-4xl mx-auto pb-12">
       {/* Page Title */}
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-          Receive Files
+          Receive Files & Folders
         </h2>
         <p className="text-sm text-[var(--text-muted)] mt-1">
-          Connect to a sender by pairing code or direct link to receive original files with cryptographic verification.
+          Connect to a sender by pairing code or direct link to receive original files and folder structures with cryptographic verification.
         </p>
       </div>
 
@@ -425,7 +440,7 @@ export const ReceivePage: React.FC = () => {
               <CheckCircle2 className="w-6 h-6 shrink-0" />
               <div>
                 <p className="font-bold text-sm">Transfer Complete!</p>
-                <p className="text-xs opacity-90">All files have been received safely and verified. Cleaning up session...</p>
+                <p className="text-xs opacity-90">All files and folders have been received safely and verified. Cleaning up session...</p>
               </div>
             </div>
           )}
@@ -465,7 +480,8 @@ export const ReceivePage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <Layers className="w-5 h-5 text-[#8B5CF6]" />
                 <h3 className="text-base font-bold text-[var(--text-primary)]">
-                  Incoming Files ({incomingFiles.length})
+                  Incoming Items ({incomingFiles.length} {incomingFiles.length === 1 ? 'file' : 'files'}
+                  {folderCount > 0 && ` across ${folderCount} ${folderCount === 1 ? 'folder' : 'folders'}`})
                 </h3>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#7C3AED]/15 text-[#8B5CF6]">
                   Total: {formatBytes(totalIncomingBytes)}
@@ -479,7 +495,7 @@ export const ReceivePage: React.FC = () => {
                   className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>{isDownloadingAll ? 'Downloading...' : 'Receive All Files'}</span>
+                  <span>{isDownloadingAll ? 'Downloading...' : 'Receive All Items'}</span>
                 </button>
               )}
             </div>
@@ -487,22 +503,33 @@ export const ReceivePage: React.FC = () => {
             {incomingFiles.length === 0 ? (
               <div className="py-12 text-center text-[var(--text-muted)] text-sm">
                 <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#8B5CF6] mb-3" />
-                <p>Waiting for sender to select files...</p>
+                <p>Waiting for sender to select items...</p>
               </div>
             ) : (
               <div className="divide-y divide-[var(--border-subtle)]">
                 {incomingFiles.map((file) => {
                   const category = getFileCategory(file.name, file.type);
+                  const isInsideFolder = file.relativePath && file.relativePath.includes('/');
+
                   return (
                     <div key={file.id} className="py-3.5 flex items-center justify-between text-sm">
                       <div className="flex items-center space-x-3 min-w-0">
                         <div className="w-10 h-10 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                          {renderFileCategoryIcon(category)}
+                          {isInsideFolder ? (
+                            <Folder className="w-5 h-5 text-[#8B5CF6]" />
+                          ) : (
+                            renderFileCategoryIcon(category)
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-[var(--text-primary)] truncate max-w-sm" title={file.name}>
                             {file.name}
                           </p>
+                          {isInsideFolder && (
+                            <div className="flex items-center space-x-1 text-[11px] text-[#8B5CF6] font-mono truncate max-w-xs" title={file.relativePath}>
+                              <span className="truncate">{file.relativePath}</span>
+                            </div>
+                          )}
                           <div className="flex items-center space-x-2 text-xs text-[var(--text-muted)] mt-0.5">
                             <span>{formatBytes(file.size)}</span>
                             <span>•</span>
@@ -570,7 +597,7 @@ export const ReceivePage: React.FC = () => {
                   className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-[#10B981] hover:bg-[#059669] shadow-lg shadow-[#10B981]/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Accept & Receive Files</span>
+                  <span>Accept & Receive Items</span>
                 </button>
               </div>
             )}
