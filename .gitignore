@@ -3,28 +3,48 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build Outputs
+# Build Outputs & Bundles
 dist/
 build/
 server/public/assets/
 server/public/index.html
-android/app/build/
+coverage/
+.nyc_output/
+
+# Android Build & SDK Artifacts
 android/.gradle/
 android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/app/*.iml
+android/.idea/
+android/.cxx/
+android/.externalNativeBuild/
 
-# Temporary Files & Sessions
+# Temporary Files, Storage & Archives
 .nova-drop-temp/
 *.tmp
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 *.zip
 *.apk
 
-# Environment & OS files
+# Environment & Credentials
 .env
 .env.local
+.env.*.local
+
+# OS Metadata
 .DS_Store
 Thumbs.db
+ehthumbs.db
 
-# IDE
+# IDE Configurations
 .vscode/
 .idea/
+*.suo
+*.user
