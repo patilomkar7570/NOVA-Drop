@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+dist/
+build/
+server/public/assets/
+server/public/index.html
+android/app/build/
+android/.gradle/
+android/build/
+
+# Temporary Files & Sessions
+.nova-drop-temp/
+*.tmp
+*.log
+
+# Environment & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
