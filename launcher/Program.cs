@@ -175,19 +175,31 @@ namespace NovaDropLauncher
 
         private static string FindStandaloneBrowser()
         {
-            // Edge 64-bit and 32-bit locations
-            string edge1 = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
-            if (File.Exists(edge1)) return edge1;
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
 
-            string edge2 = @"C:\Program Files\Microsoft\Edge\Application\msedge.exe";
-            if (File.Exists(edge2)) return edge2;
+            string[] candidates = new string[]
+            {
+                // Brave
+                Path.Combine(localAppData, @"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                Path.Combine(programFiles, @"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                Path.Combine(programFilesX86, @"BraveSoftware\Brave-Browser\Application\brave.exe"),
 
-            // Chrome locations
-            string chrome1 = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
-            if (File.Exists(chrome1)) return chrome1;
+                // Chrome
+                Path.Combine(programFiles, @"Google\Chrome\Application\chrome.exe"),
+                Path.Combine(programFilesX86, @"Google\Chrome\Application\chrome.exe"),
+                Path.Combine(localAppData, @"Google\Chrome\Application\chrome.exe"),
 
-            string chrome2 = @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe";
-            if (File.Exists(chrome2)) return chrome2;
+                // Edge
+                Path.Combine(programFilesX86, @"Microsoft\Edge\Application\msedge.exe"),
+                Path.Combine(programFiles, @"Microsoft\Edge\Application\msedge.exe")
+            };
+
+            foreach (string path in candidates)
+            {
+                if (File.Exists(path)) return path;
+            }
 
             return null;
         }
