@@ -20,12 +20,18 @@ import {
   Folder,
   FolderUp,
   FileUp,
+  Plus,
 } from 'lucide-react';
 import { FileItem } from '../types/index.js';
 import { useTransfers } from '../context/TransferContext.js';
 import { formatBytes, getFileCategory } from '../utils/formatters.js';
 import * as api from '../services/api.js';
 import { wsClient } from '../services/websocket.js';
+
+interface ScannedItem {
+  file: File;
+  relativePath: string;
+}
 
 export const SendPage: React.FC = () => {
   const {
@@ -40,6 +46,7 @@ export const SendPage: React.FC = () => {
   } = useTransfers();
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -53,7 +60,7 @@ export const SendPage: React.FC = () => {
   const isSenderSession = activeSession && activeSessionRole === 'sender';
 
   useEffect(() => {
-    // Configure webkitdirectory on folderInputRef to enable directory selection
+    // Configure webkitdirectory and directory attributes on folder input
     if (folderInputRef.current) {
       folderInputRef.current.setAttribute('webkitdirectory', '');
       folderInputRef.current.setAttribute('directory', '');
@@ -77,82 +84,145 @@ export const SendPage: React.FC = () => {
     e.stopPropagation();
     setIsDragging(false);
 
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      const scanned = await scanDroppedItems(e.dataTransfer.items);
+    try {
+      setIsScanning(true);
+      const scanned = await scanDataTransfer(e.dataTransfer);
       if (scanned.length > 0) {
-        updateFiles((prev) => [...prev, ...scanned]);
-        return;
+        addScannedItems(scanned);
       }
-    }
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFilesFromList(Array.from(e.dataTransfer.files));
+    } catch (err) {
+      console.error('Error scanning dropped files:', err);
+      // Fallback: try direct files if any
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const rawFiles = Array.from(e.dataTransfer.files);
+        addScannedItems(rawFiles.map((f) => ({ file: f, relativePath: f.name })));
+      }
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  const scanDroppedItems = async (items: DataTransferItemList): Promise<FileItem[]> => {
-    const collected: FileItem[] = [];
+  /**
+   * Robust scan of DataTransfer object:
+   * CRITICAL: Extracts items and files SYNCHRONOUSLY before any await,
+   * as browsers invalidate DataTransferItemList on the first microtask turn.
+   */
+  const scanDataTransfer = async (dt: DataTransfer): Promise<ScannedItem[]> => {
+    const rawFiles: File[] = dt.files ? Array.from(dt.files) : [];
+    const entries: any[] = [];
 
-    const traverse = async (entry: any, currentPath = ''): Promise<void> => {
+    if (dt.items && dt.items.length > 0) {
+      for (let i = 0; i < dt.items.length; i++) {
+        const item = dt.items[i];
+        if (item && item.kind === 'file') {
+          if (typeof item.webkitGetAsEntry === 'function') {
+            try {
+              const entry = item.webkitGetAsEntry();
+              if (entry) entries.push(entry);
+            } catch {
+              // Ignore failure to get entry
+            }
+          }
+        }
+      }
+    }
+
+    // Fast path: If no directory entries exist, return rawFiles directly.
+    // This is 100% reliable for individual files (e.g. 5 big videos, photos, PDFs)
+    const hasDirectories = entries.some((e) => e && e.isDirectory);
+    if (!hasDirectories && rawFiles.length > 0) {
+      return rawFiles.map((f) => ({
+        file: f,
+        relativePath: f.webkitRelativePath || f.name,
+      }));
+    }
+
+    // Directory path: Recursively traverse entries
+    const results: ScannedItem[] = [];
+
+    const readBatch = (reader: any): Promise<any[]> => {
+      return new Promise((resolve) => {
+        reader.readEntries(
+          (batch: any[]) => resolve(batch || []),
+          () => resolve([]) // Never reject or hang on error
+        );
+      });
+    };
+
+    const getFileFromEntry = (fileEntry: any): Promise<File | null> => {
+      return new Promise((resolve) => {
+        fileEntry.file(
+          (f: File) => resolve(f),
+          () => resolve(null) // Never reject or hang on error
+        );
+      });
+    };
+
+    const traverse = async (entry: any, currentPath: string): Promise<void> => {
+      if (!entry) return;
+
       if (entry.isFile) {
-        const file: File = await new Promise((res) => entry.file(res));
-        const rel = currentPath ? `${currentPath}/${file.name}` : file.name;
-        collected.push({
-          id: crypto.randomUUID(),
-          file,
-          name: file.name,
-          relativePath: rel,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          status: 'pending',
-          bytesTransferred: 0,
-          speedBps: 0,
-          etaSeconds: 0,
-        });
+        const file = await getFileFromEntry(entry);
+        if (file) {
+          const rel = currentPath ? `${currentPath}/${file.name}` : file.name;
+          results.push({ file, relativePath: rel });
+        }
       } else if (entry.isDirectory) {
+        const dirPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
         const reader = entry.createReader();
-        const readEntries = (): Promise<any[]> => new Promise((res) => reader.readEntries(res));
         let batch: any[];
         do {
-          batch = await readEntries();
-          for (const item of batch) {
-            await traverse(item, currentPath ? `${currentPath}/${entry.name}` : entry.name);
+          batch = await readBatch(reader);
+          for (const child of batch) {
+            await traverse(child, dirPath);
           }
         } while (batch.length > 0);
       }
     };
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.webkitGetAsEntry) {
-        const entry = item.webkitGetAsEntry();
-        if (entry) await traverse(entry);
-      }
+    for (const entry of entries) {
+      await traverse(entry, '');
     }
 
-    return collected;
+    // If directory traversal returned nothing, fallback to rawFiles
+    if (results.length === 0 && rawFiles.length > 0) {
+      return rawFiles.map((f) => ({
+        file: f,
+        relativePath: f.webkitRelativePath || f.name,
+      }));
+    }
+
+    return results;
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      addFilesFromList(Array.from(e.target.files));
+      const filesArray = Array.from(e.target.files);
+      addScannedItems(
+        filesArray.map((f) => ({ file: f, relativePath: f.webkitRelativePath || f.name }))
+      );
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      addFilesFromList(Array.from(e.target.files));
+      const filesArray = Array.from(e.target.files);
+      addScannedItems(
+        filesArray.map((f) => ({ file: f, relativePath: f.webkitRelativePath || f.name }))
+      );
     }
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
-  const addFilesFromList = (selectedFiles: File[]) => {
-    const newItems: FileItem[] = selectedFiles.map((file) => ({
+  const addScannedItems = (items: ScannedItem[]) => {
+    if (!items || items.length === 0) return;
+
+    const newItems: FileItem[] = items.map(({ file, relativePath }) => ({
       id: crypto.randomUUID(),
       file,
       name: file.name,
-      relativePath: file.webkitRelativePath || file.name,
+      relativePath: relativePath || file.webkitRelativePath || file.name,
       size: file.size,
       type: file.type || 'application/octet-stream',
       status: 'pending',
@@ -161,7 +231,14 @@ export const SendPage: React.FC = () => {
       etaSeconds: 0,
     }));
 
-    updateFiles((prev) => [...prev, ...newItems]);
+    updateFiles((prev) => {
+      // Deduplicate by relativePath + size
+      const existing = new Set(prev.map((f) => `${f.relativePath || f.name}_${f.size}`));
+      const nonDuplicates = newItems.filter(
+        (f) => !existing.has(`${f.relativePath || f.name}_${f.size}`)
+      );
+      return [...prev, ...nonDuplicates];
+    });
   };
 
   const removeFile = (id: string) => {
@@ -172,7 +249,7 @@ export const SendPage: React.FC = () => {
     updateFiles(() => []);
   };
 
-  // Start Session and immediately stream files to local engine storage
+  // Start Session and stream files to local engine storage
   const handleStartSession = async () => {
     if (files.length === 0) return;
 
@@ -193,7 +270,7 @@ export const SendPage: React.FC = () => {
 
       const registered = await api.registerFiles(sessionRes.sessionId, manifestList);
 
-      // Map registered IDs to our local File objects
+      // Map registered IDs to local File objects
       const updatedList: FileItem[] = files.map((item, idx) => ({
         ...item,
         id: registered[idx]?.id || item.id,
@@ -320,10 +397,12 @@ export const SendPage: React.FC = () => {
   // Ensure direct link uses Wi-Fi IP so mobile devices on the local network can open it
   const getDirectLink = () => {
     if (!activeSession) return '';
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const baseUrl = isLocalhost && systemStatus?.localWifiUrl
-      ? systemStatus.localWifiUrl
-      : window.location.origin;
+    const isLocalhost =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl =
+      isLocalhost && systemStatus?.localWifiUrl
+        ? systemStatus.localWifiUrl
+        : window.location.origin;
     return `${baseUrl}/?pair=${activeSession.pairingCode}`;
   };
 
@@ -337,7 +416,8 @@ export const SendPage: React.FC = () => {
 
   const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
   const transferredBytes = files.reduce((acc, f) => acc + f.bytesTransferred, 0);
-  const totalPercent = totalBytes > 0 ? Math.min(100, Math.round((transferredBytes / totalBytes) * 100)) : 0;
+  const totalPercent =
+    totalBytes > 0 ? Math.min(100, Math.round((transferredBytes / totalBytes) * 100)) : 0;
 
   // Count unique folders in selection
   const folderSet = new Set<string>();
@@ -383,6 +463,7 @@ export const SendPage: React.FC = () => {
         onChange={handleFolderInputChange}
         multiple
         className="hidden"
+        {...({ webkitdirectory: '', directory: '' } as any)}
       />
 
       {/* Session Active Header / Pairing Info */}
@@ -393,7 +474,9 @@ export const SendPage: React.FC = () => {
               <CheckCircle2 className="w-5 h-5 shrink-0" />
               <div>
                 <p className="font-bold text-sm">Transfer Completed Successfully!</p>
-                <p className="text-xs opacity-90">All files and folders have been received by the receiver. Cleaning up temporary session...</p>
+                <p className="text-xs opacity-90">
+                  All files and folders have been received by the receiver. Cleaning up temporary session...
+                </p>
               </div>
             </div>
           )}
@@ -450,7 +533,10 @@ export const SendPage: React.FC = () => {
             <div className="p-4 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] flex items-center justify-between">
               <div className="min-w-0 pr-2">
                 <span className="text-xs text-[var(--text-muted)]">Direct Session Link (Wi-Fi):</span>
-                <div className="text-xs font-mono text-[var(--text-secondary)] truncate max-w-[240px] mt-1" title={getDirectLink()}>
+                <div
+                  className="text-xs font-mono text-[var(--text-secondary)] truncate max-w-[240px] mt-1"
+                  title={getDirectLink()}
+                >
                   {getDirectLink()}
                 </div>
               </div>
@@ -490,34 +576,42 @@ export const SendPage: React.FC = () => {
       {/* Drag & Drop Upload Zone with Dual Selection Buttons */}
       {!isSenderSession && (
         <div
+          onClick={() => fileInputRef.current?.click()}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 select-none ${
+          className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 select-none cursor-pointer ${
             isDragging
-              ? 'border-[#7C3AED] bg-[#7C3AED]/10 scale-[1.01]'
+              ? 'border-[#7C3AED] bg-[#7C3AED]/15 scale-[1.01]'
               : 'border-[var(--border-card)] hover:border-[#7C3AED]/60 bg-[var(--bg-card)]/60 hover:bg-[var(--bg-card)]'
           }`}
         >
-          <div className="max-w-lg mx-auto space-y-5">
+          <div className="max-w-lg mx-auto space-y-5 pointer-events-none">
             <div className="w-16 h-16 rounded-2xl bg-[#7C3AED]/15 border border-[#7C3AED]/30 flex items-center justify-center mx-auto text-[#8B5CF6]">
-              <UploadCloud className="w-8 h-8" />
+              {isScanning ? (
+                <Loader2 className="w-8 h-8 animate-spin" />
+              ) : (
+                <UploadCloud className="w-8 h-8" />
+              )}
             </div>
 
             <div>
               <h3 className="text-xl font-bold text-[var(--text-primary)]">
-                Drag and drop files or folders here
+                {isScanning ? 'Scanning files & folders...' : 'Click or drop files and folders here'}
               </h3>
               <p className="text-xs text-[var(--text-muted)] mt-1.5">
-                Support for all formats and entire directory structures. Transferred byte-for-byte with zero compression or quality loss.
+                Support for all formats: large 4K videos, PDFs, photos, code, AI models & full nested folders. Zero compression or transcoding.
               </p>
             </div>
 
             {/* Dual Selection Buttons: Upload Files / Upload Folders */}
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2 pointer-events-auto">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
                 className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold shadow-md shadow-[#7C3AED]/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 <FileUp className="w-4 h-4" />
@@ -526,11 +620,14 @@ export const SendPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => folderInputRef.current?.click()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  folderInputRef.current?.click();
+                }}
                 className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-subtle)] shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 <FolderUp className="w-4 h-4 text-[#8B5CF6]" />
-                <span>Upload Folders</span>
+                <span>Upload Folder</span>
               </button>
             </div>
 
@@ -544,8 +641,8 @@ export const SendPage: React.FC = () => {
 
       {/* Selected Items List */}
       {files.length > 0 && (
-        <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-4 shadow-sm animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center space-x-2">
               <Layers className="w-5 h-5 text-[#8B5CF6]" />
               <h3 className="text-base font-bold text-[var(--text-primary)]">
@@ -558,12 +655,31 @@ export const SendPage: React.FC = () => {
             </div>
 
             {!isSenderSession && (
-              <button
-                onClick={clearAllFiles}
-                className="text-xs font-semibold text-[#EF4444] hover:text-[#DC2626] transition-colors"
-              >
-                Remove All
-              </button>
+              <div className="flex items-center space-x-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-subtle)] transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#8B5CF6]" />
+                  <span>Add Files</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => folderInputRef.current?.click()}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-subtle)] transition-colors"
+                >
+                  <FolderUp className="w-3.5 h-3.5 text-[#8B5CF6]" />
+                  <span>Add Folder</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAllFiles}
+                  className="text-xs font-semibold text-[#EF4444] hover:text-[#DC2626] transition-colors pl-2"
+                >
+                  Remove All
+                </button>
+              </div>
             )}
           </div>
 
@@ -588,7 +704,10 @@ export const SendPage: React.FC = () => {
                         {item.name}
                       </p>
                       {isInsideFolder && (
-                        <div className="flex items-center space-x-1 text-[11px] text-[#8B5CF6] font-mono truncate max-w-xs" title={item.relativePath}>
+                        <div
+                          className="flex items-center space-x-1 text-[11px] text-[#8B5CF6] font-mono truncate max-w-xs"
+                          title={item.relativePath}
+                        >
                           <span className="truncate">{item.relativePath}</span>
                         </div>
                       )}

@@ -22,6 +22,18 @@ export const AppContent: React.FC = () => {
     if (params.get('pair')) {
       setCurrentPage('receive');
     }
+
+    // Prevent default browser file navigation when dragging files anywhere over the window
+    const preventDragOver = (e: DragEvent) => e.preventDefault();
+    const preventDrop = (e: DragEvent) => e.preventDefault();
+
+    window.addEventListener('dragover', preventDragOver);
+    window.addEventListener('drop', preventDrop);
+
+    return () => {
+      window.removeEventListener('dragover', preventDragOver);
+      window.removeEventListener('drop', preventDrop);
+    };
   }, []);
 
   const renderPage = () => {

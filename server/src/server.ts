@@ -26,6 +26,12 @@ export function createApp() {
   const app = express();
   const server = http.createServer(app);
 
+  // Configure server timeouts for high-volume streaming & large-file transfers (multi-GB videos)
+  server.requestTimeout = 0; // Disable request streaming timeout
+  server.timeout = 0; // Disable socket idle timeout
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 120000;
+
   // Initialize Core Services
   const storageManager = new StorageManager(CONFIG.tempDirectory);
   const rateLimiter = new RateLimiter(5, 60 * 1000, 5 * 60 * 1000); // 5 tries/min -> 5 min lock
