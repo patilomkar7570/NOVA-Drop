@@ -183,11 +183,7 @@ export const ReceivePage: React.FC = () => {
     try {
       setIsAccepted(true);
       await api.acceptTransfer(activeSession.id);
-      if (incomingFiles.length > 1 || folderCount > 0) {
-        await handleDownloadAllZip();
-      } else {
-        await startDownloadAll();
-      }
+      await startDownloadAll();
     } catch (err) {
       console.error('Failed to accept:', err);
     }
@@ -329,7 +325,7 @@ export const ReceivePage: React.FC = () => {
     setIsDownloadingAll(false);
     setTransferSuccess(true);
 
-    // Clean up and cancel session after files are safely received
+    // Clean up and cancel session after files are safely received (with generous grace period so browser download prompt finishes)
     setTimeout(async () => {
       try {
         await api.cancelSession(activeSession.id);
@@ -338,7 +334,7 @@ export const ReceivePage: React.FC = () => {
       setIncomingFiles([]);
       setIsAccepted(false);
       setTransferSuccess(false);
-    }, 3000);
+    }, 12000);
   };
 
   // Download a single file individually

@@ -15,9 +15,9 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Default to 'system' (Auto) as requested
+  // Default to 'light' theme on phone/web as requested
   const [theme, setThemeState] = useState<ThemeMode>(() => {
-    return (localStorage.getItem('nova_theme') as ThemeMode) || 'system';
+    return (localStorage.getItem('nova_theme') as ThemeMode) || 'light';
   });
 
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -25,9 +25,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('nova_theme');
       if (saved === 'dark') return true;
       if (saved === 'light') return false;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return false; // Default to light
     }
-    return true;
+    return false;
   });
 
   useEffect(() => {

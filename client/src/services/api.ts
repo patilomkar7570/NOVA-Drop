@@ -205,15 +205,20 @@ export async function downloadFileWithProgress(
   return sha256;
 }
 
-function saveBlobAsFile(blob: Blob, filename: string) {
+export function saveBlobAsFile(blob: Blob, filename: string) {
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = blobUrl;
   a.download = filename;
+  a.rel = 'noopener';
+  // Standard dispatch for mobile Safari compatibility
   document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+  const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+  a.dispatchEvent(evt);
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }, 30000);
 }
 
 export async function verifyTransfer(
