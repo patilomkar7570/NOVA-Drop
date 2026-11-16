@@ -14,6 +14,7 @@ namespace NovaDropLauncher
     class Program
     {
         private static Process serverProcess = null;
+        private static Process windowProcess = null;
 
         [DllImport("Kernel32")]
         private static extern bool SetConsoleCtrlHandler(EventHandler handler, bool add);
@@ -46,6 +47,15 @@ namespace NovaDropLauncher
                 }
             }
             catch { }
+
+            try
+            {
+                if (windowProcess != null && !windowProcess.HasExited)
+                {
+                    windowProcess.Kill();
+                }
+            }
+            catch { }
         }
 
         [STAThread]
@@ -54,12 +64,6 @@ namespace NovaDropLauncher
             exitHandler = new EventHandler(Handler);
             SetConsoleCtrlHandler(exitHandler, true);
             AppDomain.CurrentDomain.ProcessExit += (s, e) => Cleanup();
-
-            try
-            {
-                Console.Title = "NOVA Drop — Privacy-First File Transfer (v1.0.0)";
-            }
-            catch { }
 
             string appDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             Directory.SetCurrentDirectory(appDir);
@@ -87,61 +91,14 @@ namespace NovaDropLauncher
             string localUrl = "http://localhost:3000";
             string wifiUrl = "http://" + localIp + ":3000";
 
-            // Print Banner
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine(@"
-   _  ______  _  _____       ___                 
-  / |/ / __ \/ |/ / _ | ____/ _ \_______  ___    
- /    / /_/ /    / __ |/___/ // / __/ _ \/ _ \   
-/_/|_/\____/_/|_/_/ |_|   /____/_/  \___/ .__/   
-                                       /_/       ");
-            Console.ResetColor();
-
-            Console.WriteLine("========================================================================");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("  NOVA Drop — Standalone Edition (v1.0.0)");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.WriteLine("  \"Your files. Your devices. Your network.\"");
-            Console.ResetColor();
-            Console.WriteLine("========================================================================");
-            Console.WriteLine();
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("  [+] Privacy & Security Status:");
-            Console.ResetColor();
-            Console.WriteLine("      * Cloud Sync:  DISABLED (100% Local Device Operation)");
-            Console.WriteLine("      * Compression: DISABLED (Byte-for-byte fidelity, SHA-256 verified)");
-            Console.WriteLine("      * Telemetry:   DISABLED (Zero tracking, zero accounts)");
-            Console.WriteLine();
-
-            Console.WriteLine("  ----------------------------------------------------------------------");
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("  [1] Local PC Browser Access:");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("      " + localUrl);
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("  [2] Mobile / Wi-Fi Transfer URL (Phones, Tablets & Other PCs):");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("      " + wifiUrl);
-            Console.ResetColor();
-            Console.WriteLine("  ----------------------------------------------------------------------");
-            Console.WriteLine();
-
-            // Copy Wi-Fi URL to Clipboard
+            // Automatically copy Wi-Fi URL to Clipboard so user can immediately paste it on their phone
             try
             {
                 Clipboard.SetText(wifiUrl);
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("  [v] Mobile URL automatically copied to your clipboard!");
-                Console.ResetColor();
             }
-            catch
-            {
-                // Clipboard might fail in rare environments; ignore
-            }
+            catch { }
 
-            // Launch Server Process
+            // Launch Node Server in Background (Zero console window)
             try
             {
                 ProcessStartInfo psi = new ProcessStartInfo();
@@ -157,49 +114,82 @@ namespace NovaDropLauncher
             }
             catch (Exception ex)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("  [!] Failed to start local server: " + ex.Message);
-                Console.ResetColor();
-                Console.WriteLine("  Press any key to exit...");
-                Console.ReadKey();
+                MessageBox.Show(
+                    "Failed to start local NOVA Drop engine:\n\n" + ex.Message,
+                    "NOVA Drop Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
                 return;
             }
 
-            // Open default browser after brief pause for server initialization
-            Thread.Sleep(800);
-            try
+            // Wait brief moment for server to listen
+            Thread.Sleep(900);
+
+            // Locate browser executable for standalone application window (no address bar, no tabs)
+            string appBrowserPath = FindStandaloneBrowser();
+            string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NOVA-Drop", "webview");
+
+            if (!string.IsNullOrEmpty(appBrowserPath))
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("  [v] Opening NOVA Drop in your default web browser...");
-                Console.ResetColor();
-                Process.Start(new ProcessStartInfo(localUrl) { UseShellExecute = true });
+                try
+                {
+                    ProcessStartInfo appPsi = new ProcessStartInfo();
+                    appPsi.FileName = appBrowserPath;
+                    appPsi.Arguments = "--app=\"" + localUrl + "\" --user-data-dir=\"" + dataDir + "\" --window-size=1260,840";
+                    appPsi.UseShellExecute = false;
+
+                    windowProcess = Process.Start(appPsi);
+                }
+                catch
+                {
+                    // Fallback to default shell launch if app mode fails
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(localUrl) { UseShellExecute = true });
+                    }
+                    catch { }
+                }
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine("  [!] Could not open browser automatically: " + ex.Message);
+                // Fallback to default browser
+                try
+                {
+                    Process.Start(new ProcessStartInfo(localUrl) { UseShellExecute = true });
+                }
+                catch { }
             }
 
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("  How to connect to another phone or tablet on the same Wi-Fi:");
-            Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine("  1. Connect your phone or tablet to the same Wi-Fi network.");
-            Console.WriteLine("  2. Open Safari / Chrome and paste the URL: " + wifiUrl);
-            Console.WriteLine("     (Or open the NOVA Drop Android APK).");
-            Console.WriteLine("  3. Transfer files at maximum Wi-Fi speed with zero quality loss!");
-            Console.ResetColor();
-            Console.WriteLine();
-            Console.WriteLine("========================================================================");
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine("  Server is active. Press Ctrl+C or close this window to exit.");
-            Console.ResetColor();
-            Console.WriteLine("========================================================================");
-
-            // Wait for exit
-            if (serverProcess != null)
+            // Wait for standalone window to close, then cleanly terminate server
+            if (windowProcess != null)
+            {
+                windowProcess.WaitForExit();
+                Cleanup();
+            }
+            else if (serverProcess != null)
             {
                 serverProcess.WaitForExit();
             }
+        }
+
+        private static string FindStandaloneBrowser()
+        {
+            // Edge 64-bit and 32-bit locations
+            string edge1 = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
+            if (File.Exists(edge1)) return edge1;
+
+            string edge2 = @"C:\Program Files\Microsoft\Edge\Application\msedge.exe";
+            if (File.Exists(edge2)) return edge2;
+
+            // Chrome locations
+            string chrome1 = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+            if (File.Exists(chrome1)) return chrome1;
+
+            string chrome2 = @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe";
+            if (File.Exists(chrome2)) return chrome2;
+
+            return null;
         }
 
         private static string GetLocalIpAddress()
@@ -225,7 +215,6 @@ namespace NovaDropLauncher
                     }
                 }
 
-                // Fallback using UDP socket connect
                 using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
                 {
                     socket.Connect("8.8.8.8", 65530);

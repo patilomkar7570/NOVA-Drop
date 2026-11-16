@@ -8,65 +8,57 @@
 
 ### What's New & Included in this Release
 
-#### 1. Full Folder & File Upload Support
-- **Upload Files & Upload Folders**: Choose between uploading individual files or entire folders with complex nested structures.
-- **Drag & Drop Folder Traversal**: Drag and drop directories directly into the browser — NOVA Drop recursively scans and preserves relative paths.
-- **Folder Structure Preservation**: Original filenames, subfolder paths, and hierarchy are maintained and verified.
+#### 1. Windows Installable Application (`NOVA-Drop-Setup.exe`)
+- **Native Windows Desktop Window**: Launches as a true desktop application on PC — not as a browser tab. Opens in its own clean standalone application window with the boxed NOVA logo.
+- **Instant Automatic Live Engine**: The moment you open the app, the local engine automatically goes live on `0.0.0.0:3000` (`localhost:3000`).
+- **Automatic Wi-Fi URL Clipboard Copy**: Immediately detects your local Wi-Fi IP and copies the direct mobile link (e.g. `http://192.168.31.75:3000`) to your Windows clipboard so you can paste it straight on your phone.
+- **Dedicated Installer Wizard**: Clean setup wizard with Desktop shortcut, Start Menu shortcut, boxed application icon, and a **"Launch NOVA Drop immediately"** button upon installation.
+- **Self-Contained**: Bundled local Node runtime — no manual dependencies or technical setup required.
 
-#### 2. Windows Installer (`NOVA-Drop-Setup.exe`)
-- Standard Windows Setup wizard built with Inno Setup.
-- Installs NOVA Drop to your PC with clean Desktop and Start Menu shortcuts.
-- Features a dedicated **"Launch NOVA Drop immediately"** button upon setup completion.
-- Self-contained with bundled runtime — no external dependencies needed.
-
-#### 3. Windows Portable Standalone (`NOVA-Drop-Portable.exe`)
-- **Zero installation required.** A true single `.exe` executable.
-- Click to launch immediately anywhere (Desktop, Downloads, USB stick).
-- Starts the local transfer engine, automatically detects your Wi-Fi address, copies the URL to your clipboard, and opens your browser.
-
-#### 4. Android Mobile Application (`NOVA-Drop.apk`)
+#### 2. Android Mobile Application (`NOVA-Drop.apk`)
 - Native Android app with system `DownloadManager` integration.
-- Downloads files directly to your phone's default Downloads folder.
+- Downloads files directly to your phone's default Downloads folder with zero loss of quality.
 - Built-in connect screen: simply paste the URL displayed on your PC to connect instantly.
 
-#### 5. iPhone, iPad & Mobile Web Edition (Safari PWA)
+#### 3. Full Folder & File Upload Support
+- **Upload Files & Upload Folders**: Dedicated buttons to choose between uploading individual files or entire folders with complex nested directory hierarchies.
+- **Drag & Drop Folder Traversal**: Drag and drop entire directories directly into NOVA Drop — recursively scans and preserves all subfolder paths.
+- **Integrity Preservation**: Original filenames, subfolder paths, and file integrity are preserved and verified via SHA-256 checksums.
+
+#### 4. iPhone, iPad & Mobile Web Edition (Safari PWA)
 - No app installation needed on iOS!
-- Connect your iPhone/iPad to the same Wi-Fi as your PC, paste the URL into Safari, and transfer files.
-- Supports **Add to Home Screen** for a fullscreen native app experience.
+- Connect your iPhone or iPad to the same Wi-Fi as your PC, paste the URL into Safari, and transfer files.
+- Supports **Add to Home Screen** for a fullscreen, distraction-free app experience.
 
 ---
 
 ### Instant Wi-Fi URL Workflow: How to Transfer Files & Folders
 
-Whenever you run **NOVA-Drop-Portable.exe**, **NOVA-Drop-Setup.exe**, or the **NOVA Drop APK**, the app automatically gives you a direct local Wi-Fi URL:
+Whenever you open **NOVA Drop** on your PC, the app automatically goes live and gives you your direct local Wi-Fi URL:
 
 1. **Launch on PC:**
-   - Double-click `NOVA-Drop-Portable.exe` or launch from the installer.
-   - It displays:
-     - **Local PC URL:** `http://localhost:3000`
-     - **Mobile / Wi-Fi URL:** `http://<YOUR_PC_IP>:3000` (e.g. `http://192.168.31.75:3000`)
-   - The Mobile Wi-Fi URL is **automatically copied to your Windows clipboard**!
-   - NOVA Drop opens in your browser automatically.
+   - Open NOVA Drop from your Desktop or Start Menu.
+   - It starts immediately in its own standalone desktop window.
+   - The Mobile Wi-Fi URL (e.g. `http://192.168.31.75:3000`) is **automatically copied to your Windows clipboard**!
 
 2. **Open on Phone or Tablet:**
-   - Ensure phone and PC are on the same Wi-Fi.
-   - Open Safari / Chrome or the NOVA Drop Android APK.
-   - Paste the URL (e.g. `http://192.168.31.75:3000`).
+   - Ensure your phone and PC are connected to the same Wi-Fi network.
+   - Open Safari / Chrome or launch the **NOVA Drop Android APK**.
+   - Paste the copied URL (e.g. `http://192.168.31.75:3000`).
 
 3. **Transfer Instantly:**
    - Select your files or folders (**Upload Files** or **Upload Folders**) and click **Create Transfer Session**.
-   - On the other device, click **Accept & Receive Items**.
+   - On the receiving device, click **Accept & Receive Items**.
    - Files stream sequentially at full line-rate Wi-Fi speed with real-time percentage progress and cryptographic SHA-256 verification.
-   - Sessions cleanly auto-reset and purge temporary files upon completion.
+   - Sessions automatically reset and purge temporary buffers upon transfer completion.
 
 ---
 
 ### Release Binaries & Checksums
 
-| File | Type | Size | SHA-256 Checksum |
+| File | Platform | Size | SHA-256 Checksum |
 | :--- | :---: | :---: | :--- |
-| **`NOVA-Drop-Setup.exe`** | Windows Installer | 24.9 MB | `49CE94C9C134D71664360B1A34D32D614D025E801D87D70F7ED1B582179D9BA4` |
-| **`NOVA-Drop-Portable.exe`** | Windows Portable EXE | 35.3 MB | `CCD1F88CA1ECE876088FF7B4C777840E650DF99078B9B6450E3B25A1AEDD710A` |
+| **`NOVA-Drop-Setup.exe`** | Windows Installer | 24.9 MB | `52308D96E401E78FB7E00E436EB48CA78102C9BC05899CE687A2A7F50DA4B333` |
 | **`NOVA-Drop.apk`** | Android Application | 3.9 MB | `9A0162EF5C821401BAA7E16DA13AA1E5A7499ECBF0A0C9F5D16AFA2B46C53B3E` |
 
 ---
