@@ -64,7 +64,12 @@ export class RateLimiter {
       return;
     }
 
-    // Reset window if it has passed
+    // If currently blocked, preserve block state until blockedUntil has elapsed
+    if (entry.blockedUntil > now) {
+      return;
+    }
+
+    // Reset window if it has passed and not blocked
     if (now - entry.firstFailureTime > this.windowMs) {
       entry.failures = 1;
       entry.firstFailureTime = now;

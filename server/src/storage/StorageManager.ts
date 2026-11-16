@@ -32,7 +32,10 @@ export class StorageManager {
 
   public getSessionDir(sessionId: string): string {
     // Sanitize sessionId to alphanumeric and dashes only to prevent path traversal
-    const safeSessionId = sessionId.replace(/[^a-zA-Z0-9-]/g, '');
+    const safeSessionId = (sessionId || '').replace(/[^a-zA-Z0-9-]/g, '');
+    if (!safeSessionId) {
+      throw new Error('Invalid or empty sessionId');
+    }
     const sessionDir = path.join(this.tempDir, `session_${safeSessionId}`);
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
@@ -42,7 +45,10 @@ export class StorageManager {
 
   public getFilePath(sessionId: string, fileId: string): string {
     const sessionDir = this.getSessionDir(sessionId);
-    const safeFileId = fileId.replace(/[^a-zA-Z0-9-]/g, '');
+    const safeFileId = (fileId || '').replace(/[^a-zA-Z0-9-]/g, '');
+    if (!safeFileId) {
+      throw new Error('Invalid or empty fileId');
+    }
     return path.join(sessionDir, `file_${safeFileId}.tmp`);
   }
 

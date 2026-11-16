@@ -16,11 +16,13 @@ import {
   Download,
   Loader2,
   Folder,
+  Archive as ArchiveIcon,
 } from 'lucide-react';
 import { useTransfers } from '../context/TransferContext.js';
 import { formatBytes, formatPairingCode, getFileCategory } from '../utils/formatters.js';
 import * as api from '../services/api.js';
 import { wsClient } from '../services/websocket.js';
+import { createZipArchive } from '../utils/zip.js';
 
 interface IncomingItem {
   id: string;
@@ -175,15 +177,93 @@ export const ReceivePage: React.FC = () => {
     };
   }, [isReceiverSession, activeSession]);
 
-  // When Accept is clicked, automatically download all incoming files sequentially
+  // When Accept is clicked, automatically download incoming files
   const handleAcceptTransfer = async () => {
     if (!activeSession) return;
     try {
       setIsAccepted(true);
       await api.acceptTransfer(activeSession.id);
-      await startDownloadAll();
+      if (incomingFiles.length > 1 || folderCount > 0) {
+        await handleDownloadAllZip();
+      } else {
+        await startDownloadAll();
+      }
     } catch (err) {
       console.error('Failed to accept:', err);
+    }
+  };
+
+  const handleDownloadAllZip = async () => {
+    if (!activeSession || incomingFiles.length === 0) return;
+    setIsDownloadingAll(true);
+
+    try {
+      const zipEntries: Array<{ path: string; data: Uint8Array }> = [];
+
+      for (const f of incomingFiles) {
+        setIncomingFiles((prev) =>
+          prev.map((item) =>
+            item.id === f.id ? { ...item, status: 'downloading', progressPercent: 20 } : item
+          )
+        );
+
+        const url = api.getDownloadUrl(activeSession.id, f.id);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch ${f.name}`);
+
+        const buf = await res.arrayBuffer();
+        const data = new Uint8Array(buf);
+        zipEntries.push({
+          path: f.relativePath || f.name,
+          data,
+        });
+
+        // Verify SHA-256
+        await api.verifyTransfer(activeSession.id, f.id, f.sha256);
+
+        setIncomingFiles((prev) =>
+          prev.map((item) =>
+            item.id === f.id
+              ? { ...item, downloaded: true, status: 'verified', progressPercent: 100 }
+              : item
+          )
+        );
+      }
+
+      // Generate in-browser standard uncompressed ZIP
+      const zipBlob = createZipArchive(zipEntries);
+      const zipName =
+        folderCount === 1 && incomingFiles[0]?.relativePath?.includes('/')
+          ? `${incomingFiles[0].relativePath.split('/')[0]}.zip`
+          : 'nova-drop-transfer.zip';
+
+      const blobUrl = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = zipName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+
+      await refreshHistory();
+      setTransferSuccess(true);
+
+      setTimeout(async () => {
+        try {
+          await api.cancelSession(activeSession.id);
+        } catch {}
+        clearSession();
+        setIncomingFiles([]);
+        setIsAccepted(false);
+        setTransferSuccess(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Error creating zip archive:', err);
+      // Fallback to sequential individual downloads
+      await startDownloadAll();
+    } finally {
+      setIsDownloadingAll(false);
     }
   };
 
@@ -489,14 +569,24 @@ export const ReceivePage: React.FC = () => {
               </div>
 
               {isAccepted && incomingFiles.length > 1 && (
-                <button
-                  onClick={startDownloadAll}
-                  disabled={isDownloadingAll}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{isDownloadingAll ? 'Downloading...' : 'Receive All Items'}</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleDownloadAllZip}
+                    disabled={isDownloadingAll}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    <ArchiveIcon className="w-3.5 h-3.5" />
+                    <span>{isDownloadingAll ? 'Preparing...' : 'Download as ZIP'}</span>
+                  </button>
+                  <button
+                    onClick={startDownloadAll}
+                    disabled={isDownloadingAll}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-subtle)] transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Separately</span>
+                  </button>
+                </div>
               )}
             </div>
 

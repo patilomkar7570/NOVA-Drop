@@ -51,7 +51,7 @@ export function createApp() {
       ) {
         callback(null, true);
       } else {
-        callback(new Error('Cross-origin requests blocked by NOVA Drop privacy policy'));
+        callback(null, false);
       }
     },
     credentials: true,

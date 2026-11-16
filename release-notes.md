@@ -58,7 +58,7 @@ Whenever you open **NOVA Drop** on your PC, the app automatically goes live and 
 
 | File | Platform | Size | SHA-256 Checksum |
 | :--- | :---: | :---: | :--- |
-| **`NOVA-Drop-Setup.exe`** | Windows Installer | 24.9 MB | `EAF1C0669E9E3A1DA5C9489C7BB4ABB5311A70BF84F788C8CE0AD1CBF5FE165A` |
+| **`NOVA-Drop-Setup.exe`** | Windows Installer | 24.9 MB | `B14C58BA98AC346317A322096DD02DE1C1723324B69359F8DA70344B8C94A301` |
 | **`NOVA-Drop.apk`** | Android Application | 3.9 MB | `9A0162EF5C821401BAA7E16DA13AA1E5A7499ECBF0A0C9F5D16AFA2B46C53B3E` |
 
 ---

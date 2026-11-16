@@ -10,6 +10,25 @@ import { generatePairingCode, generateSecureToken } from '../crypto/hash.js';
 import { StorageManager } from '../storage/StorageManager.js';
 import { RateLimiter } from './RateLimiter.js';
 
+function sanitizeFilename(filename: string): string {
+  if (!filename || typeof filename !== 'string') return 'unnamed_file';
+  let clean = filename.replace(/\0/g, '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  clean = clean.split(/[/\\]/).pop() || 'unnamed_file';
+  clean = clean.replace(/[/\\:*?"<>|]/g, '_');
+  if (!clean || clean === '.' || clean === '..') return 'unnamed_file';
+  return clean.slice(0, 255);
+}
+
+function sanitizeRelativePath(relPath: string | undefined, defaultName: string): string {
+  if (!relPath || typeof relPath !== 'string') return defaultName;
+  let clean = relPath.replace(/\0/g, '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  clean = clean.replace(/\\/g, '/').replace(/^[a-zA-Z]:/, '');
+  const segments = clean.split('/').filter((s) => s && s !== '.' && s !== '..');
+  if (segments.length === 0) return defaultName;
+  const safeSegments = segments.map((s) => s.replace(/[/\\:*?"<>|]/g, '_').slice(0, 255));
+  return safeSegments.join('/');
+}
+
 export class SessionManager {
   private sessions = new Map<string, TransferSession>();
   private codeToSessionId = new Map<string, string>();
@@ -50,7 +69,9 @@ export class SessionManager {
 
     const senderToken = generateSecureToken();
     const now = Date.now();
-    const timeoutMs = (options?.timeoutMinutes || this.defaultTimeoutMinutes) * 60 * 1000;
+    const requestedTimeout = options?.timeoutMinutes !== undefined ? options.timeoutMinutes : this.defaultTimeoutMinutes;
+    const safeTimeoutMinutes = requestedTimeout > 60 ? 60 : requestedTimeout;
+    const timeoutMs = safeTimeoutMinutes * 60 * 1000;
 
     const sender: PeerInfo = {
       id: crypto.randomUUID(),
@@ -192,14 +213,25 @@ export class SessionManager {
       throw new Error('Session not found or expired');
     }
 
+    if (fileList.length > 2000) {
+      throw new Error('Maximum 2,000 files allowed per transfer session');
+    }
+
     const added: FileManifest[] = [];
     for (const f of fileList) {
       const fileId = crypto.randomUUID();
+      const safeName = sanitizeFilename(f.name);
+      const safeRelativePath = sanitizeRelativePath(f.relativePath, safeName);
+      const safeSize =
+        typeof f.size === 'number' && Number.isFinite(f.size) && f.size >= 0
+          ? Math.floor(f.size)
+          : 0;
+
       const manifest: FileManifest = {
         id: fileId,
-        name: f.name,
-        relativePath: f.relativePath,
-        size: f.size,
+        name: safeName,
+        relativePath: safeRelativePath,
+        size: safeSize,
         type: f.type || 'application/octet-stream',
         sha256: f.sha256,
         status: 'pending',
@@ -265,14 +297,15 @@ export class SessionManager {
     let cleaned = 0;
 
     for (const [id, session] of this.sessions.entries()) {
-      if (now > session.expiresAt || session.status === 'cancelled' || session.status === 'completed') {
-        // If completed or cancelled more than 5 minutes ago, or expired
-        if (now > session.expiresAt || session.status === 'cancelled') {
-          this.codeToSessionId.delete(session.pairingCode);
-          await this.storageManager.deleteSession(id);
-          this.sessions.delete(id);
-          cleaned++;
-        }
+      const isExpired = now > session.expiresAt;
+      const isCancelled = session.status === 'cancelled';
+      const isCompleted = session.status === 'completed';
+
+      if (isExpired || isCancelled || isCompleted) {
+        this.codeToSessionId.delete(session.pairingCode);
+        await this.storageManager.deleteSession(id);
+        this.sessions.delete(id);
+        cleaned++;
       }
     }
 
